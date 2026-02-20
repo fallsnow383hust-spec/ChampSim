@@ -1,12 +1,12 @@
 #include <catch.hpp>
-#include "mocks.hpp"
+
 #include "cache.h"
 #include "defaults.hpp"
+#include "mocks.hpp"
 #include "modules.h"
 
 template <uint64_t bypass_addr>
-struct bypass_replacement : champsim::modules::replacement
-{
+struct bypass_replacement : champsim::modules::replacement {
   using replacement::replacement;
 
   bypass_replacement(CACHE* c) {(void)c;}
@@ -21,7 +21,8 @@ struct bypass_replacement : champsim::modules::replacement
 champsim::modules::replacement::register_module<bypass_replacement<0xcafebabe>,CACHE*> bypass_replacement_register("bypass_replacement");
 SCENARIO("The replacement policy can bypass") {
   using namespace std::literals;
-  GIVEN("A single cache") {
+  GIVEN("A single cache")
+  {
     constexpr uint64_t hit_latency = 2;
     constexpr uint64_t fill_latency = 2;
     do_nothing_MRC mock_ll;
@@ -47,23 +48,23 @@ SCENARIO("The replacement policy can bypass") {
       elem->begin_phase();
     }
 
-    WHEN("A packet is issued") {
+    WHEN("A packet is issued")
+    {
       decltype(mock_ul_seed)::request_type test;
       test.address = champsim::address{0xdeadbeef};
       test.cpu = 0;
       test.type = access_type::WRITE;
       auto test_result = mock_ul_seed.issue(test);
 
-      THEN("The issue is received") {
-        REQUIRE(test_result);
-      }
+      THEN("The issue is received") { REQUIRE(test_result); }
 
       // Run the uut for a bunch of cycles to fill the cache
       for (auto i = 0; i < 100; ++i)
         for (auto elem : elements)
           elem->_operate();
 
-      AND_WHEN("A packet with a different address is sent") {
+      AND_WHEN("A packet with a different address is sent")
+      {
         decltype(mock_ul_test)::request_type test_b;
         test_b.address = champsim::address{0xcafebabe};
         test_b.cpu = 0;
@@ -72,22 +73,21 @@ SCENARIO("The replacement policy can bypass") {
 
         auto test_b_result = mock_ul_test.issue(test_b);
 
-        for (uint64_t i = 0; i < 2*hit_latency; ++i)
+        for (uint64_t i = 0; i < 2 * hit_latency; ++i)
           for (auto elem : elements)
             elem->_operate();
 
-        THEN("The issue is received") {
+        THEN("The issue is received")
+        {
           CHECK(test_b_result);
           CHECK_THAT(mock_ll.addresses, Catch::Matchers::RangeEquals(std::vector{test_b.address}));
         }
 
-        for (uint64_t i = 0; i < 2*(fill_latency+hit_latency); ++i)
+        for (uint64_t i = 0; i < 2 * (fill_latency + hit_latency); ++i)
           for (auto elem : elements)
             elem->_operate();
 
-        THEN("No blocks are evicted") {
-          REQUIRE_THAT(mock_ll.addresses, Catch::Matchers::RangeEquals(std::vector{test_b.address}));
-        }
+        THEN("No blocks are evicted") { REQUIRE_THAT(mock_ll.addresses, Catch::Matchers::RangeEquals(std::vector{test_b.address})); }
       }
     }
   }

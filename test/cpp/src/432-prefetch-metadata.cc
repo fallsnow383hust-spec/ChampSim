@@ -1,20 +1,19 @@
 #include <catch.hpp>
-#include "mocks.hpp"
-#include "defaults.hpp"
-#include "cache.h"
-#include "modules.h"
-
 #include <map>
 #include <vector>
 
+#include "cache.h"
+#include "defaults.hpp"
+#include "mocks.hpp"
+#include "modules.h"
+
 namespace test
 {
-  std::map<CACHE*, std::vector<uint32_t>> metadata_operate_collector;
-  std::map<CACHE*, std::vector<uint32_t>> metadata_fill_collector;
-}
+std::map<CACHE*, std::vector<uint32_t>> metadata_operate_collector;
+std::map<CACHE*, std::vector<uint32_t>> metadata_fill_collector;
+} // namespace test
 
-struct metadata_collector : champsim::modules::prefetcher
-{
+struct metadata_collector : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
   uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) {
@@ -32,8 +31,7 @@ struct metadata_collector : champsim::modules::prefetcher
 };
 
 template <uint32_t to_emit>
-struct metadata_fill_emitter : champsim::modules::prefetcher
-{
+struct metadata_fill_emitter : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
   uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) { return metadata_in; }
@@ -41,8 +39,10 @@ struct metadata_fill_emitter : champsim::modules::prefetcher
 };
 champsim::modules::prefetcher::register_module<metadata_collector> mc_register("metadata_collector");
 
-SCENARIO("Prefetch metadata from an issued prefetch is seen in the lower level") {
-  GIVEN("An upper and lower level pair of caches") {
+SCENARIO("Prefetch metadata from an issued prefetch is seen in the lower level")
+{
+  GIVEN("An upper and lower level pair of caches")
+  {
     constexpr uint64_t hit_latency = 2;
     constexpr uint64_t fill_latency = 2;
     do_nothing_MRC mock_ll;
@@ -57,15 +57,14 @@ SCENARIO("Prefetch metadata from an issued prefetch is seen in the lower level")
       .prefetcher("metadata_collector")
     };
     CACHE upper{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("432a-upper")
-      .sets(64)
-      .mshr_size(1)
-      .tag_bandwidth(champsim::bandwidth::maximum_type{1})
-      .fill_bandwidth(champsim::bandwidth::maximum_type{1})
-      .lower_level(&lower_queues)
-      .hit_latency(hit_latency)
-      .fill_latency(fill_latency)
-    };
+                    .name("432a-upper")
+                    .sets(64)
+                    .mshr_size(1)
+                    .tag_bandwidth(champsim::bandwidth::maximum_type{1})
+                    .fill_bandwidth(champsim::bandwidth::maximum_type{1})
+                    .lower_level(&lower_queues)
+                    .hit_latency(hit_latency)
+                    .fill_latency(fill_latency)};
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &lower, &upper}};
 
@@ -75,7 +74,8 @@ SCENARIO("Prefetch metadata from an issued prefetch is seen in the lower level")
       elem->begin_phase();
     }
 
-    WHEN("The upper level issues a prefetch with metadata") {
+    WHEN("The upper level issues a prefetch with metadata")
+    {
       test::metadata_operate_collector.insert_or_assign(&lower, std::vector<uint32_t>{});
 
       // Request a prefetch
@@ -89,15 +89,18 @@ SCENARIO("Prefetch metadata from an issued prefetch is seen in the lower level")
         for (auto elem : elements)
           elem->_operate();
 
-      THEN("The lower level sees the metadata in prefetcher_cache_operate()") {
+      THEN("The lower level sees the metadata in prefetcher_cache_operate()")
+      {
         REQUIRE_THAT(test::metadata_operate_collector.at(&lower), Catch::Matchers::Contains(seed_metadata));
       }
     }
   }
 }
 
-SCENARIO("Prefetch metadata from an filled block is seen in the upper level") {
-  GIVEN("An upper and lower level pair of caches") {
+SCENARIO("Prefetch metadata from an filled block is seen in the upper level")
+{
+  GIVEN("An upper and lower level pair of caches")
+  {
     constexpr uint64_t hit_latency = 2;
     constexpr uint64_t fill_latency = 2;
     constexpr uint32_t seed_metadata = 0xcafebabe;
@@ -131,7 +134,8 @@ SCENARIO("Prefetch metadata from an filled block is seen in the upper level") {
       elem->begin_phase();
     }
 
-    WHEN("The upper level experiences a miss and the lower level emits metadata on the fill") {
+    WHEN("The upper level experiences a miss and the lower level emits metadata on the fill")
+    {
       champsim::address seed_addr{0xdeadbeef};
 
       test::metadata_fill_collector.insert_or_assign(&upper, std::vector<uint32_t>{});
@@ -147,10 +151,10 @@ SCENARIO("Prefetch metadata from an filled block is seen in the upper level") {
         for (auto elem : elements)
           elem->_operate();
 
-      THEN("The upper level sees the metadata in prefetcher_cache_fill()") {
+      THEN("The upper level sees the metadata in prefetcher_cache_fill()")
+      {
         REQUIRE_THAT(test::metadata_fill_collector.at(&upper), Catch::Matchers::RangeEquals(std::vector{seed_metadata}));
       }
     }
   }
 }
-

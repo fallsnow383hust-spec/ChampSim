@@ -1,5 +1,4 @@
 #include <catch.hpp>
-
 #include <map>
 
 #include "cache.h"
@@ -8,12 +7,11 @@
 
 namespace
 {
-  std::map<CACHE*, int> operate_interface_discerner;
-  std::map<CACHE*, int> fill_interface_discerner;
+std::map<CACHE*, int> operate_interface_discerner;
+std::map<CACHE*, int> fill_interface_discerner;
 
-  struct dual_interface : champsim::modules::prefetcher
-  {
-    using prefetcher::prefetcher;
+struct dual_interface : champsim::modules::prefetcher {
+  using prefetcher::prefetcher;
 
     uint32_t prefetcher_cache_operate(uint64_t, uint64_t, bool, std::underlying_type_t<access_type>, uint32_t metadata_in) override
     {
@@ -49,9 +47,11 @@ namespace
   champsim::modules::prefetcher::register_module<dual_interface> dual_interface_register("dual_interface_2");
 }
 
-SCENARIO("The prefetcher interface prefers one that uses champsim::address") {
+SCENARIO("The prefetcher interface prefers one that uses champsim::address")
+{
   using namespace std::literals;
-  GIVEN("A single cache") {
+  GIVEN("A single cache")
+  {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
     CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
@@ -69,7 +69,8 @@ SCENARIO("The prefetcher interface prefers one that uses champsim::address") {
       elem->begin_phase();
     }
 
-    WHEN("A packet is issued") {
+    WHEN("A packet is issued")
+    {
       ::operate_interface_discerner.insert_or_assign(&uut, 0);
       ::fill_interface_discerner.insert_or_assign(&uut, 0);
 
@@ -78,22 +79,16 @@ SCENARIO("The prefetcher interface prefers one that uses champsim::address") {
       test.cpu = 0;
       auto test_result = mock_ul.issue(test);
 
-      THEN("The issue is received") {
-        REQUIRE(test_result);
-      }
+      THEN("The issue is received") { REQUIRE(test_result); }
 
       // Run the uut for a bunch of cycles to fill the cache
       for (auto i = 0; i < 100; ++i)
         for (auto elem : elements)
           elem->_operate();
 
-      THEN("The prefetcher operate hook is called") {
-        REQUIRE(::operate_interface_discerner.at(&uut) == 3);
-      }
+      THEN("The prefetcher operate hook is called") { REQUIRE(::operate_interface_discerner.at(&uut) == 3); }
 
-      THEN("The prefetcher fill hook is called") {
-        REQUIRE(::fill_interface_discerner.at(&uut) == 2);
-      }
+      THEN("The prefetcher fill hook is called") { REQUIRE(::fill_interface_discerner.at(&uut) == 2); }
     }
   }
 }

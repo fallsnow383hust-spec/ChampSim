@@ -24,6 +24,7 @@
 #include <fmt/core.h>
 
 #include "environment.h"
+#include "event_listeners.h"
 #include "ooo_cpu.h"
 #include "operable.h"
 #include "phase_info.h"
@@ -75,7 +76,7 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
                                             [](const auto acc, const operable& y) { return std::min(acc, y.clock_period); });
 
   bool livelock_trigger{false};
-  uint64_t livelock_period{100000};
+  uint64_t livelock_period{10000000};
   uint64_t livelock_timer{0};
   //                                   die | critical | warning
   std::vector<double> livelock_threshold{0.01, 0.02, 0.05};
@@ -190,6 +191,10 @@ std::vector<phase_stats> main(environment& env, std::vector<phase_info>& phases,
   champsim::chrono::clock global_clock;
   std::vector<phase_stats> results;
   for (auto phase : phases) {
+    // call event listeners
+    handle_event<Event::BEGIN_PHASE>(phase.is_warmup);
+    // handle_begin_phase(0, phase.is_warmup);
+
     auto stats = do_phase(phase, env, traces, global_clock);
     if (!phase.is_warmup) {
       results.push_back(stats);

@@ -1,20 +1,19 @@
 #include <catch.hpp>
-#include "mocks.hpp"
-#include "defaults.hpp"
-#include "cache.h"
-#include "modules.h"
-
 #include <map>
 #include <vector>
+
+#include "cache.h"
+#include "defaults.hpp"
+#include "mocks.hpp"
+#include "modules.h"
 namespace
 {
-  std::map<CACHE*, int> victim_interface_discerner;
-  std::map<CACHE*, int> update_interface_discerner;
-  std::map<CACHE*, int> fill_override_interface_discerner;
+std::map<CACHE*, int> victim_interface_discerner;
+std::map<CACHE*, int> update_interface_discerner;
+std::map<CACHE*, int> fill_override_interface_discerner;
 
-  struct dual_interface : champsim::modules::replacement
-  {
-    using replacement::replacement;
+struct dual_interface : champsim::modules::replacement {
+  using replacement::replacement;
 
     dual_interface(CACHE* c) {(void)c;}
 
@@ -77,9 +76,11 @@ namespace
 champsim::modules::replacement::register_module<dual_interface,CACHE*> dual_interface_register("dual_interface");
 champsim::modules::replacement::register_module<fill_selection,CACHE*> fill_selection("fill_selection");
 
-SCENARIO("The simulator selects the address-based victim finder in replacement policies") {
+SCENARIO("The simulator selects the address-based victim finder in replacement policies")
+{
   using namespace std::literals;
-  GIVEN("A single cache") {
+  GIVEN("A single cache")
+  {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
     CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
@@ -100,7 +101,8 @@ SCENARIO("The simulator selects the address-based victim finder in replacement p
       elem->begin_phase();
     }
 
-    WHEN("A packet is issued") {
+    WHEN("A packet is issued")
+    {
       ::victim_interface_discerner.insert_or_assign(&uut, 0);
 
       decltype(mock_ul)::request_type seed;
@@ -109,50 +111,50 @@ SCENARIO("The simulator selects the address-based victim finder in replacement p
       seed.cpu = 0;
       auto seed_result = mock_ul.issue(seed);
 
-      THEN("The issue is received") {
-        REQUIRE(seed_result);
-      }
+      THEN("The issue is received") { REQUIRE(seed_result); }
 
       // Run the uut for a bunch of cycles to fill the cache
       for (auto i = 0; i < 100; ++i)
         for (auto elem : elements)
           elem->_operate();
 
-      AND_WHEN("The packet is returned") {
+      AND_WHEN("The packet is returned")
+      {
         // Run the uut for a bunch of cycles to fill the cache
         for (auto i = 0; i < 100; ++i)
           for (auto elem : elements)
             elem->_operate();
 
-        AND_WHEN("A packet with a different address is sent") {
+        AND_WHEN("A packet with a different address is sent")
+        {
           decltype(mock_ul)::request_type test;
           test.address = champsim::address{0xcafebabe};
           test.is_translated = true;
           test.cpu = 0;
           auto test_result = mock_ul.issue(test);
 
-          THEN("The issue is received") {
-            REQUIRE(test_result);
-          }
+          THEN("The issue is received") { REQUIRE(test_result); }
 
           // Run the uut for a bunch of cycles to fill the cache
           for (auto i = 0; i < 100; ++i)
             for (auto elem : elements)
               elem->_operate();
 
-          THEN("The replacement policy is called with address interface") {
-            REQUIRE(::victim_interface_discerner[&uut] == 3);
-          }
+          THEN("The replacement policy is called with address interface") { REQUIRE(::victim_interface_discerner[&uut] == 3); }
         }
       }
     }
   }
 }
 
-SCENARIO("The simulator selects the address-based update function in replacement policies") {
+SCENARIO("The simulator selects the address-based update function in replacement policies")
+{
   using namespace std::literals;
-  auto [type, str] = GENERATE(table<access_type, std::string_view>({std::pair{access_type::LOAD, "load"sv}, std::pair{access_type::RFO, "RFO"sv}, std::pair{access_type::PREFETCH, "prefetch"sv}, std::pair{access_type::WRITE, "write"sv}, std::pair{access_type::TRANSLATION, "translation"sv}}));
-  GIVEN("A cache with one element") {
+  auto [type, str] = GENERATE(table<access_type, std::string_view>({std::pair{access_type::LOAD, "load"sv}, std::pair{access_type::RFO, "RFO"sv},
+                                                                    std::pair{access_type::PREFETCH, "prefetch"sv}, std::pair{access_type::WRITE, "write"sv},
+                                                                    std::pair{access_type::TRANSLATION, "translation"sv}}));
+  GIVEN("A cache with one element")
+  {
     constexpr uint64_t hit_latency = 2;
     constexpr uint64_t fill_latency = 2;
     do_nothing_MRC mock_ll;
@@ -185,39 +187,38 @@ SCENARIO("The simulator selects the address-based update function in replacement
     test.type = type;
     auto test_result = mock_ul.issue(test);
 
-    THEN("The issue is received") {
-      REQUIRE(test_result);
-    }
+    THEN("The issue is received") { REQUIRE(test_result); }
 
     // Run the uut for a bunch of cycles to fill the cache
     for (auto i = 0; i < 100; ++i)
       for (auto elem : elements)
         elem->_operate();
 
-    WHEN("A packet with the same address is issued") {
+    WHEN("A packet with the same address is issued")
+    {
       ::update_interface_discerner[&uut] = 0;
       auto repeat_test_result = mock_ul.issue(test);
 
-      THEN("The issue is received") {
-        REQUIRE(repeat_test_result);
-      }
+      THEN("The issue is received") { REQUIRE(repeat_test_result); }
 
       // Run the uut for a bunch of cycles to fill the cache
       for (auto i = 0; i < 100; ++i)
         for (auto elem : elements)
           elem->_operate();
 
-      THEN("The replacement policy is called with the address interface") {
-        REQUIRE(::update_interface_discerner[&uut] == 3);
-      }
+      THEN("The replacement policy is called with the address interface") { REQUIRE(::update_interface_discerner[&uut] == 3); }
     }
   }
 }
 
-SCENARIO("The simulator selects the cache fill function if it is available") {
+SCENARIO("The simulator selects the cache fill function if it is available")
+{
   using namespace std::literals;
-  auto [type, str] = GENERATE(table<access_type, std::string_view>({std::pair{access_type::LOAD, "load"sv}, std::pair{access_type::RFO, "RFO"sv}, std::pair{access_type::PREFETCH, "prefetch"sv}, std::pair{access_type::WRITE, "write"sv}, std::pair{access_type::TRANSLATION, "translation"sv}}));
-  GIVEN("A cache with one element") {
+  auto [type, str] = GENERATE(table<access_type, std::string_view>({std::pair{access_type::LOAD, "load"sv}, std::pair{access_type::RFO, "RFO"sv},
+                                                                    std::pair{access_type::PREFETCH, "prefetch"sv}, std::pair{access_type::WRITE, "write"sv},
+                                                                    std::pair{access_type::TRANSLATION, "translation"sv}}));
+  GIVEN("A cache with one element")
+  {
     constexpr uint64_t hit_latency = 2;
     constexpr uint64_t fill_latency = 10;
     do_nothing_MRC mock_ll;
@@ -243,7 +244,8 @@ SCENARIO("The simulator selects the cache fill function if it is available") {
       elem->begin_phase();
     }
 
-    WHEN("A packet with the is issued") {
+    WHEN("A packet with the is issued")
+    {
       ::update_interface_discerner[&uut] = 0;
       ::fill_override_interface_discerner[&uut] = 0;
       decltype(mock_ul)::request_type test;
@@ -253,27 +255,28 @@ SCENARIO("The simulator selects the cache fill function if it is available") {
       test.type = type;
       auto test_result = mock_ul.issue(test);
 
-      THEN("The issue is received") {
-        REQUIRE(test_result);
-      }
+      THEN("The issue is received") { REQUIRE(test_result); }
 
       // Run the uut for a bunch of cycles to miss the cache
-      for (uint64_t i = 0; i < 2*hit_latency; ++i)
+      for (uint64_t i = 0; i < 2 * hit_latency; ++i)
         for (auto elem : elements)
           elem->_operate();
 
-      THEN("The replacement policy is called with the address interface") {
+      THEN("The replacement policy is called with the address interface")
+      {
         REQUIRE(::update_interface_discerner[&uut] == 1);
         REQUIRE(::fill_override_interface_discerner[&uut] == 0);
       }
 
-      AND_WHEN("The cache is filled") {
+      AND_WHEN("The cache is filled")
+      {
         // Run the uut for a bunch of cycles to fill the cache
         for (auto i = 0; i < 100; ++i)
           for (auto elem : elements)
             elem->_operate();
 
-        THEN("The replacement policy is called with the address interface") {
+        THEN("The replacement policy is called with the address interface")
+        {
           REQUIRE(::update_interface_discerner[&uut] == 1);
           REQUIRE(::fill_override_interface_discerner[&uut] == 1);
         }
