@@ -256,10 +256,10 @@ public:
       b.m_repl_modules.push_back("lru");
     }
     for(auto s : b.m_pref_modules) {
-      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(s,this));
+      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(s,this,champsim::modules::ModuleBuilder{}));
     }
     for(auto s : b.m_repl_modules) {
-      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(s,this,this));
+      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(s,this,champsim::modules::ModuleBuilder{}));
     }
   }
 

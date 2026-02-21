@@ -10,7 +10,7 @@ struct random : public champsim::modules::replacement {
   std::mt19937_64 rng{};
   std::uniform_int_distribution<long> dist;
 
-  explicit random(CACHE* cache);
+  explicit random(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder);
   random(CACHE* cache, long ways);
 
   // void initialize_replacement();

@@ -14,16 +14,18 @@ std::map<CACHE*, std::vector<champsim::address>> address_operate_collector;
 struct address_collector : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
-  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address, bool, bool, access_type, uint32_t metadata_in)
+  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address, bool, bool, access_type, uint32_t metadata_in) override
   {
     ::address_operate_collector[intern_].push_back(addr);
     return metadata_in;
   }
 
-  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in)
+  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in) override
   {
     return metadata_in;
   }
+
+  address_collector(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
 };
 champsim::modules::prefetcher::register_module<address_collector> address_collect_register("address_collector");
 
@@ -49,6 +51,7 @@ SCENARIO("A cache merges two requests in the MSHR")
       .lower_level(&mock_ll.queues)
       .hit_latency(hit_latency)
       .fill_latency(fill_latency)
+      .prefetch_activate(type)
       .prefetcher("address_collector")
     };
 

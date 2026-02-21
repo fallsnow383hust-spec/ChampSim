@@ -17,8 +17,10 @@ struct bypass_replacement : champsim::modules::replacement {
       return 1L;
     return 0L;
   }
+
+  bypass_replacement(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
 };
-champsim::modules::replacement::register_module<bypass_replacement<0xcafebabe>,CACHE*> bypass_replacement_register("bypass_replacement");
+champsim::modules::replacement::register_module<bypass_replacement<0xcafebabe>> bypass_replacement_register("bypass_replacement");
 SCENARIO("The replacement policy can bypass") {
   using namespace std::literals;
   GIVEN("A single cache")

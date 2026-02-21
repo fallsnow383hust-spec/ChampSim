@@ -50,6 +50,7 @@ public:
   bool predict_branch(champsim::address pc) override;
   void last_branch_result(champsim::address pc, champsim::address branch_target, bool taken, uint8_t branch_type) override;
   void adjust_threshold(bool correct);
+  hashed_perceptron(std::string name, O3_CPU* core, champsim::modules::ModuleBuilder builder) {};
 };
 
 #endif

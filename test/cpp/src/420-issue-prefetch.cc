@@ -25,6 +25,8 @@ struct hit_collector : champsim::modules::prefetcher {
   {
     return metadata_in;
   }
+
+  hit_collector(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
 };
 
 champsim::modules::prefetcher::register_module<hit_collector> hit_collector_register("hit_collector");

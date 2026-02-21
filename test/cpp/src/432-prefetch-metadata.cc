@@ -28,6 +28,8 @@ struct metadata_collector : champsim::modules::prefetcher {
     it.first->second.push_back(metadata_in);
     return metadata_in;
   }
+
+  metadata_collector(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
 };
 
 template <uint32_t to_emit>
@@ -36,6 +38,8 @@ struct metadata_fill_emitter : champsim::modules::prefetcher {
 
   uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) { return metadata_in; }
   uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t) { return to_emit; }
+
+  metadata_fill_emitter(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
 };
 champsim::modules::prefetcher::register_module<metadata_collector> mc_register("metadata_collector");
 

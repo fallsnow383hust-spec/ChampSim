@@ -49,6 +49,8 @@ struct dual_interface : champsim::modules::replacement {
     {
       ::update_interface_discerner[intern_] = 3;
     }
+
+    dual_interface(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
   };
 
   struct fill_selection : champsim::modules::replacement
@@ -70,11 +72,13 @@ struct dual_interface : champsim::modules::replacement {
     {
       ::fill_override_interface_discerner[intern_] = 1;
     }
+
+    fill_selection(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
   };
 }
 
-champsim::modules::replacement::register_module<dual_interface,CACHE*> dual_interface_register("dual_interface");
-champsim::modules::replacement::register_module<fill_selection,CACHE*> fill_selection("fill_selection");
+champsim::modules::replacement::register_module<dual_interface> dual_interface_register("dual_interface");
+champsim::modules::replacement::register_module<fill_selection> fill_selection_register("fill_selection");
 
 SCENARIO("The simulator selects the address-based victim finder in replacement policies")
 {

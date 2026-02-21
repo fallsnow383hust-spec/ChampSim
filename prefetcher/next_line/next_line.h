@@ -16,6 +16,8 @@ struct next_line : public champsim::modules::prefetcher {
   // void prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) {}
   // void prefetcher_cycle_operate() {}
   // void prefetcher_final_stats() {}
+
+  next_line(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {};
 };
 
 #endif

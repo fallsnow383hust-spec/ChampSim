@@ -3,9 +3,9 @@
 #include <algorithm>
 #include <cassert>
 
-champsim::modules::replacement::register_module<lru,CACHE*> lru_register("lru");
+champsim::modules::replacement::register_module<lru> lru_register("lru");
 
-lru::lru(CACHE* cache) : lru(cache, cache->NUM_SET, cache->NUM_WAY) {}
+lru::lru(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) : lru(cache, cache->NUM_SET, cache->NUM_WAY) {}
 
 lru::lru(CACHE* cache, long sets, long ways) : NUM_WAY(ways), last_used_cycles(static_cast<std::size_t>(sets * ways), 0) {}
 

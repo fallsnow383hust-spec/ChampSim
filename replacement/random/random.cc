@@ -1,7 +1,7 @@
 #include "random.h"
 
-champsim::modules::replacement::register_module<struct random,CACHE*> random_register("random");
-random::random(CACHE* cache) : random(cache, cache->NUM_WAY) {}
+champsim::modules::replacement::register_module<struct random> random_register("random");
+random::random(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) : random(cache, cache->NUM_WAY) {}
 
 random::random(CACHE* cache, long ways) : dist(0, ways - 1) {}
 

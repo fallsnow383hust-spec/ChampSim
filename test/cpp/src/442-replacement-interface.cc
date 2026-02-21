@@ -37,9 +37,11 @@ struct update_state_collector : champsim::modules::replacement {
     auto cfc_it = ::replacement_cache_fill_collector.try_emplace(intern_);
     cfc_it.first->second.push_back({triggering_cpu, set, way, full_addr, ip, victim_addr, type});
   }
+
+  update_state_collector(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
 };
 
-champsim::modules::replacement::register_module<update_state_collector,CACHE*> update_state_collect_register("update_state_collector");
+champsim::modules::replacement::register_module<update_state_collector> update_state_collect_register("update_state_collector");
 
 SCENARIO("The replacement policy is triggered on a miss, not on a fill") {
   using namespace std::literals;

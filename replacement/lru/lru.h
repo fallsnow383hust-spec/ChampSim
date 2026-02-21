@@ -13,7 +13,7 @@ class lru : public champsim::modules::replacement
   uint64_t cycle = 0;
 
 public:
-  explicit lru(CACHE* cache);
+  explicit lru(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder);
   lru(CACHE* cache, long sets, long ways);
 
   // void initialize_replacement();

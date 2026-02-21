@@ -21,6 +21,8 @@ public:
   // void initialize_branch_predictor();
   bool predict_branch(champsim::address ip) override;
   void last_branch_result(champsim::address ip, champsim::address branch_target, bool taken, uint8_t branch_type) override;
+
+  bimodal(std::string name, O3_CPU* core, champsim::modules::ModuleBuilder builder) {};
 };
 
 #endif

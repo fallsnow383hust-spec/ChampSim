@@ -42,7 +42,7 @@ public:
   // prediction table structure
   std::vector<std::array<champsim::msl::fwcounter<champsim::msl::lg2(SHCT_MAX + 1)>, SHCT_SIZE>> SHCT;
 
-  explicit ship(CACHE* cache);
+  explicit ship(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder);
 
   long find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip,
                    champsim::address full_addr, access_type type) override;

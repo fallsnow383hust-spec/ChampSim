@@ -221,9 +221,9 @@ public:
       b.m_btb_impls.push_back("basic_btb");
     }
     for(auto s : b.m_bp_impls)
-      branch_module_pimpl.push_back(champsim::modules::branch_predictor::create_instance(s,this));
+      branch_module_pimpl.push_back(champsim::modules::branch_predictor::create_instance(s,this,champsim::modules::ModuleBuilder{}));
     for(auto s : b.m_btb_impls)
-      btb_module_pimpl.push_back(champsim::modules::btb::create_instance(s,this));
+      btb_module_pimpl.push_back(champsim::modules::btb::create_instance(s,this,champsim::modules::ModuleBuilder{}));
     
   }
 };

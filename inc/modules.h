@@ -35,19 +35,52 @@ class O3_CPU;
 namespace champsim::modules {
 
 
+struct ModuleBuilder {
+  private:
+  std::map<std::string,std::any> parameters;
+
+  public:
+  template<typename T>
+  T get_parameter(std::string name, bool optional = false, T default_value = T{}) {
+    if(parameters.find(name) == parameters.end()) {
+      if(optional) {
+        return default_value;
+      }
+      fmt::print("[MODULE] ERROR: parameter {} not found for module construction\n",name);
+      exit(-1);
+    }
+    try {
+      return std::any_cast<T>(parameters[name]);
+    }
+    catch(const std::bad_any_cast& caught) {
+      fmt::print("[MODULE] ERROR: Casting failed while retrieving parameter {}, is your parameter type correct?\n",name);
+      exit(-1);
+    }
+  }
+
+  template<typename T>
+  ModuleBuilder& add_parameter(std::string name, T value) {
+    if(parameters.find(name) != parameters.end()) {
+      fmt::print("[MODULE] ERROR: duplicate parameter name used: {}\n",name);
+      exit(-1);
+    }
+    parameters[name] = value;
+    return *this;
+  }
+};
+
 //Module base, defining the base type B for the module and component type C that it is used by
 template<typename B, typename C>
 struct module_base {
     std::string NAME;
     C* intern_;
-    using function_type = typename std::function<std::unique_ptr<B>()>;
+    using function_type = typename std::function<std::unique_ptr<B>(std::string name, C* intern_, ModuleBuilder builder)>;
 
     private:
     static std::map<std::string,std::any> module_map;
     static std::map<std::string,std::vector<std::unique_ptr<B>>> instance_map;
 
-    template<typename... Params>
-    static void add_module(std::string name, std::function<std::unique_ptr<B>(Params...)> module_constructor) {
+    static void add_module(std::string name, std::function<std::unique_ptr<B>(std::string name, C* intern_, ModuleBuilder builder)> module_constructor) {
         if(module_map.find(name) != module_map.end()) {
             fmt::print("[MODULE] ERROR: duplicate module name used: {}\n", name);
             exit(-1);
@@ -57,17 +90,19 @@ struct module_base {
 
     public:
     //bind the internal pointer to its managing component
+    //should probably remove this call
     void bind(C* bind_arg) {intern_ = bind_arg;};
 
     //create an instance of the module, which will be stored in this base-module-type's static list
-    template<typename T, typename... Params>
-    static B* create_instance(std::string name, T* bind_arg, Params... parameters) {
+    template<typename T>
+    static B* create_instance(std::string name, T* bind_arg, ModuleBuilder builder = ModuleBuilder{}) {
         if(module_map.find(name) == module_map.end()) {
             fmt::print("[MODULE] ERROR: specified module {} does not exist\n",name);
             exit(-1);
         }
         try {
-          B* instance_ptr = instance_map[name].emplace_back(std::any_cast<std::function<std::unique_ptr<B>(Params...)>>(module_map[name])(parameters...)).get();
+          B* instance_ptr = instance_map[name].emplace_back(std::any_cast<std::function<std::unique_ptr<B>(std::string name, C* intern_, ModuleBuilder builder)>>(module_map[name])(name, bind_arg, builder)).get();
+          //It seems sketchy for the module wrapper to be tracking these separately from the module itself, can we fix this?
           instance_ptr->NAME = name;
           instance_ptr->bind(bind_arg);
           return(instance_ptr);
@@ -80,11 +115,11 @@ struct module_base {
 
     //register a derived type D of base type B and constructor with arguments Params with the module system
     //this is necessary to be able to create instances
-    template<typename D, typename... Params> 
+    template<typename D> 
     struct register_module {
       register_module(std::string module_name) {
           
-          std::function<std::unique_ptr<B>(Params...)> create_module([](Params... parameters){return std::unique_ptr<B>(new D(parameters...));});
+          std::function<std::unique_ptr<B>(std::string name, C* intern_, ModuleBuilder builder)> create_module([](std::string name, C* intern_, ModuleBuilder builder){return std::unique_ptr<B>(new D(name, intern_, builder));});
           add_module(module_name,create_module);
       }
     };

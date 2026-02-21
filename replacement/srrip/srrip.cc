@@ -6,9 +6,9 @@
 
 #include "cache.h"
 
-champsim::modules::replacement::register_module<srrip,CACHE*> srrip_register("srrip");
+champsim::modules::replacement::register_module<srrip> srrip_register("srrip");
 
-srrip::srrip(CACHE* cache) : srrip(cache, cache->NUM_SET, cache->NUM_WAY) {}
+srrip::srrip(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) : srrip(cache, cache->NUM_SET, cache->NUM_WAY) {}
 
 srrip::srrip(CACHE* cache, long sets_, long ways_)
 {

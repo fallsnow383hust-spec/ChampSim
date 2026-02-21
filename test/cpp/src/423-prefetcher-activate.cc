@@ -24,6 +24,8 @@ struct address_collector : champsim::modules::prefetcher {
     {
       return metadata_in;
     }
+
+    address_collector(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
   };
 
 }

@@ -49,6 +49,8 @@ public:
                                     uint32_t metadata_in) override;
   uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in) override;
 
+  va_ampm_lite(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {};
+
   // void prefetcher_cycle_operate() {}
   // void prefetcher_final_stats() {}
 };

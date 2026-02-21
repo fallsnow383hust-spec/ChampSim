@@ -24,7 +24,7 @@ struct srrip : public champsim::modules::replacement {
 
   std::vector<srrip_set_helper> sets;
 
-  explicit srrip(CACHE* cache);
+  explicit srrip(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder);
   srrip(CACHE* cache, long sets_, long ways_);
 
   // void initialize_replacement() {}

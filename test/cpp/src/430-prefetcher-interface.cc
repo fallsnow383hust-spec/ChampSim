@@ -42,6 +42,8 @@ struct dual_interface : champsim::modules::prefetcher {
       ::fill_interface_discerner[intern_] = 2;
       return metadata_in;
     }
+
+    dual_interface(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
   };
 
   champsim::modules::prefetcher::register_module<dual_interface> dual_interface_register("dual_interface_2");

@@ -15,7 +15,7 @@ class basic_btb : public champsim::modules::btb
 
 public:
   using btb::btb;
-  basic_btb() {}
+  basic_btb(std::string name, O3_CPU* core, champsim::modules::ModuleBuilder builder) {};
 
   // void initialize_btb();
   std::pair<champsim::address, bool> btb_prediction(champsim::address ip) override;
