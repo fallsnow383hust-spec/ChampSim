@@ -154,7 +154,7 @@ jobs:
       run: |
         sudo apt-get install curl zip unzip tar ${{ matrix.config.cxx }}
 
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         submodules: 'true'
 
@@ -199,7 +199,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         submodules: 'true'
 
@@ -225,7 +225,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         submodules: 'true'
 
@@ -267,20 +267,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: [cpp, python, json_output]
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
 
     - name: Set Coverage Environment
       run: sudo apt-get install lcov
 
-    - uses: actions/download-artifact@v4.1.8
+    - uses: actions/download-artifact@v5.0.0
       with:
         name: lcov-cpp
 
-    - uses: actions/download-artifact@v4.1.8
+    - uses: actions/download-artifact@v5.0.0
       with:
         name: lcov-python
 
-    - uses: actions/download-artifact@v4.1.8
+    - uses: actions/download-artifact@v5.0.0
       with:
         name: lcov-json
 
