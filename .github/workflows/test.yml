@@ -213,7 +213,7 @@ jobs:
         LDFLAGS: "--coverage"
 
     - name: Produce JSON
-      run: ./bin/champsim -w5000 -i5000 --json=test.json -- <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc)
+      run: ./bin/champsim --config test/config/default.json -w5000 -i5000 --json=test.json -- <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc)
 
     - name: Validate JSON
       run: python3 -m json.tool test.json
