@@ -2,6 +2,7 @@
 
 #include "dram_controller.h"
 #include "vmem.h"
+#include "defaults.hpp"
 
 SCENARIO("The virtual memory remove PA asked by PTE")
 {
@@ -11,25 +12,9 @@ SCENARIO("The virtual memory remove PA asked by PTE")
     GIVEN("A large virtual memory") {
       constexpr unsigned levels = 5;
       constexpr champsim::data::bytes pte_page_size{1ull << 12};
-      MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                            champsim::chrono::picoseconds{6400},
-                            std::size_t{18},
-                            std::size_t{18},
-                            std::size_t{18},
-                            std::size_t{38},
-                            champsim::chrono::microseconds{64000},
-                            {},
-                            64,
-                            64,
-                            1,
-                            champsim::data::bytes{8},
-                            1024,
-                            1024,
-                            4,
-                            4,
-                            4,
-                            8192};
-      VirtualMemory uut{pte_page_size, levels, std::chrono::nanoseconds{6400}, dram};
+      MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DRAM", nullptr, champsim::defaults::default_memory_controller()}};
+      VirtualMemory uut{champsim::modules::ModuleBuilder{"uut", "VMEM", nullptr, champsim::defaults::default_vmem()}
+          .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
 
       //we should re-reference many times at random addresses and ensure that we never allocate additional pages
       std::size_t new_size = uut.available_ppages();

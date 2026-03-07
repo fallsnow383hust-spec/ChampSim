@@ -654,8 +654,8 @@ long O3_CPU::handle_memory_return()
   long progress{0};
 
   for (champsim::bandwidth fetch_bw{FETCH_WIDTH}, l1i_bw{L1I_BANDWIDTH};
-       fetch_bw.has_remaining() && l1i_bw.has_remaining() && !L1I_bus.lower_level->returned.empty(); l1i_bw.consume()) {
-    auto& l1i_entry = L1I_bus.lower_level->returned.front();
+       fetch_bw.has_remaining() && l1i_bw.has_remaining() && !L1I_bus.lower_level->get_returned().empty(); l1i_bw.consume()) {
+    auto& l1i_entry = L1I_bus.lower_level->get_returned().front();
 
     while (fetch_bw.has_remaining() && !l1i_entry.instr_depend_on_me.empty()) {
       auto fetched = std::find_if(std::begin(IFETCH_BUFFER), std::end(IFETCH_BUFFER), ooo_model_instr::matches_id(l1i_entry.instr_depend_on_me.front()));
@@ -674,13 +674,13 @@ long O3_CPU::handle_memory_return()
 
     // remove this entry if we have serviced all of its instructions
     if (l1i_entry.instr_depend_on_me.empty()) {
-      L1I_bus.lower_level->returned.pop_front();
+      L1I_bus.lower_level->get_returned().pop_front();
       ++progress;
     }
   }
 
-  auto l1d_it = std::begin(L1D_bus.lower_level->returned);
-  for (champsim::bandwidth l1d_bw{L1D_BANDWIDTH}; l1d_bw.has_remaining() && l1d_it != std::end(L1D_bus.lower_level->returned); l1d_bw.consume(), ++l1d_it) {
+  auto l1d_it = std::begin(L1D_bus.lower_level->get_returned());
+  for (champsim::bandwidth l1d_bw{L1D_BANDWIDTH}; l1d_bw.has_remaining() && l1d_it != std::end(L1D_bus.lower_level->get_returned()); l1d_bw.consume(), ++l1d_it) {
     for (auto& lq_entry : LQ) {
       if (lq_entry.has_value() && lq_entry->fetch_issued && champsim::block_number{lq_entry->virtual_address} == champsim::block_number{l1d_it->v_address}) {
         lq_entry->finish(std::begin(ROB), std::end(ROB));
@@ -690,7 +690,7 @@ long O3_CPU::handle_memory_return()
     }
     ++progress;
   }
-  L1D_bus.lower_level->returned.erase(std::begin(L1D_bus.lower_level->returned), l1d_it);
+  L1D_bus.lower_level->get_returned().erase(std::begin(L1D_bus.lower_level->get_returned()), l1d_it);
 
   return progress;
 }
@@ -846,4 +846,4 @@ bool CacheBus::issue_write(request_type data_packet)
   return lower_level->add_wq(data_packet);
 }
 
-champsim::modules::core_module::register_module<O3_CPU> default_cpu_module("O3_CPU");
+champsim::modules::core_module::register_module<O3_CPU> default_cpu_module("DEFAULT_CORE");

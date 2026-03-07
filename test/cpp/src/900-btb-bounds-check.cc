@@ -2,6 +2,7 @@
 
 #include "mocks.hpp"
 #include "ooo_cpu.h"
+#include "defaults.hpp"
 
 /**
  * The BTB module had a sneaky bug. If:
@@ -14,8 +15,8 @@
 TEST_CASE("The basic_btb module does not overflow its bounds.")
 {
   do_nothing_MRC mock_L1I, mock_L1D;
-  O3_CPU uut{champsim::core_builder{}};
-  O3_CPU other_cpu{champsim::core_builder{}};
+  O3_CPU uut{champsim::modules::ModuleBuilder{"uut_core", "CPU", nullptr, champsim::defaults::default_core()}};
+  O3_CPU other_cpu{champsim::modules::ModuleBuilder{"uut_core", "CPU", nullptr, champsim::defaults::default_core()}};
 
   // Populate the other_cpu's BTB tables
   other_cpu.initialize();

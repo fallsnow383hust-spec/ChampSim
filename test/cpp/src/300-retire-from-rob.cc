@@ -3,6 +3,7 @@
 #include "instr.h"
 #include "mocks.hpp"
 #include "ooo_cpu.h"
+#include "defaults.hpp"
 
 SCENARIO("An empty ROB does not retire any instructions")
 {
@@ -10,10 +11,10 @@ SCENARIO("An empty ROB does not retire any instructions")
   {
     do_nothing_MRC mock_L1I, mock_L1D;
     constexpr long retire_bandwidth = 1;
-    O3_CPU uut{champsim::core_builder{}
-                   .retire_width(champsim::bandwidth::maximum_type{retire_bandwidth})
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"uut_core", "CPU", nullptr, champsim::defaults::default_core()}
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{retire_bandwidth})
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     auto old_rob_occupancy = std::size(uut.ROB);
     auto old_num_retired = uut.num_retired;
@@ -38,10 +39,10 @@ SCENARIO("A completed instruction can be retired")
   {
     do_nothing_MRC mock_L1I, mock_L1D;
     constexpr long retire_bandwidth = 1;
-    O3_CPU uut{champsim::core_builder{}
-                   .retire_width(champsim::bandwidth::maximum_type{retire_bandwidth})
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"uut_core", "CPU", nullptr, champsim::defaults::default_core()}
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{retire_bandwidth})
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     uut.ROB.push_back(champsim::test::instruction_with_ip(1));
 
@@ -82,10 +83,10 @@ SCENARIO("Completed instructions are retired in order")
   {
     do_nothing_MRC mock_L1I, mock_L1D;
     constexpr long retire_bandwidth = 2;
-    O3_CPU uut{champsim::core_builder{}
-                   .retire_width(champsim::bandwidth::maximum_type{retire_bandwidth})
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"uut_core", "CPU", nullptr, champsim::defaults::default_core()}
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{retire_bandwidth})
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     std::vector test_instructions(retire_bandwidth, champsim::test::instruction_with_ip(1));
 
@@ -133,10 +134,10 @@ SCENARIO("The retire bandwidth limits the number of retirements per cycle")
     do_nothing_MRC mock_L1I, mock_L1D;
     constexpr long retire_bandwidth = 1;
     constexpr long num_instrs = 2 * retire_bandwidth;
-    O3_CPU uut{champsim::core_builder{}
-                   .retire_width(champsim::bandwidth::maximum_type{retire_bandwidth})
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"uut_core", "CPU", nullptr, champsim::defaults::default_core()}
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{retire_bandwidth})
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     std::vector test_instructions(num_instrs, champsim::test::instruction_with_ip(1));
 

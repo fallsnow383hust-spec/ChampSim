@@ -10,10 +10,9 @@ SCENARIO("The prefetch queue size limits the number of prefetches that can be is
   {
     auto pq_size = GENERATE(as<unsigned>(), 1, 3, 5, 16);
     do_nothing_MRC mock_ll;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("426-uut-" + std::to_string(pq_size))
-                  .lower_level(&mock_ll.queues)
-                  .pq_size((unsigned)pq_size)};
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+                  .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                  .add_parameter("pq_size", static_cast<std::size_t>(pq_size))};
 
     std::array<champsim::operable*, 2> elements{{&mock_ll, &uut}};
 

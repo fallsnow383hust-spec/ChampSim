@@ -17,29 +17,36 @@
 #ifndef DEFAULTS_HPP
 #define DEFAULTS_HPP
 
-#include "../branch/hashed_perceptron/hashed_perceptron.h"
-#include "../btb/basic_btb/basic_btb.h"
-#include "../prefetcher/no/no.h"
-#include "../replacement/lru/lru.h"
-#include "cache_builder.h"
-#include "core_builder.h"
-#include "ptw_builder.h"
+#include "modules.h"
+
+#include <array>
+#include <optional>
+#include <string>
+#include <vector>
+
+class CACHE;
+class VirtualMemory;
+namespace champsim { class channel; }
 
 namespace champsim::defaults
 {
-const auto default_core =
-    champsim::modules::ModuleBuilder{}
-        .add_parameter("dib_set", 32)
-        .add_parameter("dib_way", 8)
-        .add_parameter("dib_window", 16)
-        .add_parameter("ifetch_buffer_size", 64)
-        .add_parameter("decode_buffer_size", 32)
-        .add_parameter("dispatch_buffer_size", 32)
-        .add_parameter("dib_hit_buffer_size", 32) // assumed
-        .add_parameter("register_file_size", 128)
-        .add_parameter("rob_size", 352)
-        .add_parameter("lq_size", 128)
-        .add_parameter("sq_size", 72)
+// O3_CPU parameters - types must exactly match get_parameter<T>() calls in ooo_cpu.h
+inline champsim::modules::ModuleBuilder default_core()
+{
+    return champsim::modules::ModuleBuilder{}
+        .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+        .add_parameter("cpu", static_cast<uint8_t>(0))
+        .add_parameter("dib_set", static_cast<uint32_t>(32))
+        .add_parameter("dib_way", static_cast<uint32_t>(8))
+        .add_parameter("dib_window", static_cast<std::size_t>(16))
+        .add_parameter("ifetch_buffer_size", static_cast<uint32_t>(64))
+        .add_parameter("decode_buffer_size", static_cast<uint32_t>(32))
+        .add_parameter("dispatch_buffer_size", static_cast<uint32_t>(32))
+        .add_parameter("dib_hit_buffer_size", static_cast<uint32_t>(32))
+        .add_parameter("register_file_size", static_cast<uint32_t>(128))
+        .add_parameter("rob_size", static_cast<uint32_t>(352))
+        .add_parameter("lq_size", static_cast<uint32_t>(128))
+        .add_parameter("sq_size", static_cast<uint32_t>(72))
         .add_parameter("fetch_width", champsim::bandwidth::maximum_type{6})
         .add_parameter("decode_width", champsim::bandwidth::maximum_type{6})
         .add_parameter("dispatch_width", champsim::bandwidth::maximum_type{6})
@@ -47,112 +54,254 @@ const auto default_core =
         .add_parameter("lq_width", champsim::bandwidth::maximum_type{2})
         .add_parameter("sq_width", champsim::bandwidth::maximum_type{2})
         .add_parameter("retire_width", champsim::bandwidth::maximum_type{5})
-        .add_parameter("dib_inorder_width", champsim::bandwidth::maximum_type{5}) // assumed
-        .add_parameter("mispredict_penalty", 1)
+        .add_parameter("dib_inorder_width", champsim::bandwidth::maximum_type{5})
+        .add_parameter("mispredict_penalty", static_cast<unsigned>(1))
         .add_parameter("schedule_width", champsim::bandwidth::maximum_type{128})
-        .add_parameter("decode_latency", 1)
-        .add_parameter("dib_hit_latency", 1)
-        .add_parameter("dispatch_latency", 1)
-        .add_parameter("schedule_latency", 0)
-        .add_parameter("execute_latency", 0)
+        .add_parameter("decode_latency", static_cast<unsigned>(1))
+        .add_parameter("dib_hit_latency", static_cast<unsigned>(1))
+        .add_parameter("dispatch_latency", static_cast<unsigned>(1))
+        .add_parameter("schedule_latency", static_cast<unsigned>(0))
+        .add_parameter("execute_latency", static_cast<unsigned>(0))
         .add_parameter("l1i_bandwidth", champsim::bandwidth::maximum_type{1})
         .add_parameter("l1d_bandwidth", champsim::bandwidth::maximum_type{1})
-        .add_parameter("branch_predictor", "hashed_perceptron")
-        .add_parameter("btb", "basic_btb");
+        .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(nullptr))
+        .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(nullptr))
+        .add_parameter("l1i", static_cast<CACHE*>(nullptr))
+        .add_parameter("bp_impls", std::vector<std::string>{})
+        .add_parameter("btb_impls", std::vector<std::string>{});
+}
 
-const auto default_l1i = champsim::modules::ModuleBuilder{}
-                             .add_parameter("sets_factor", 64)
-                             .add_parameter("ways", 8)
-                             .add_parameter("pq_size", 32)
+// CACHE parameters - types must exactly match get_parameter<T>() calls in cache.h
+inline champsim::modules::ModuleBuilder default_l1i()
+{
+    return champsim::modules::ModuleBuilder{}
+                             .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+                             .add_parameter("num_sets", static_cast<uint32_t>(64))
+                             .add_parameter("num_ways", static_cast<uint32_t>(8))
+                             .add_parameter("pq_size", static_cast<std::size_t>(32))
+                             .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                             .add_parameter("hit_latency", static_cast<uint64_t>(2))
+                             .add_parameter("fill_latency", static_cast<uint64_t>(2))
                              .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
-                             .add_parameter("reset_prefetch_as_load", false)
+                             .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{1})
+                             .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{1})
+                             .add_parameter("prefetch_as_load", false)
+                             .add_parameter("match_offset_bits", true)
                              .add_parameter("virtual_prefetch", true)
-                             .add_parameter("wq_checks_full_addr", true)
-                             .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
-                             .add_parameter("prefetcher", "no")
-                             .add_parameter("replacement", "lru");
+                             .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                             .add_parameter("prefetcher_modules", std::vector<std::string>{"no"})
+                             .add_parameter("replacement_modules", std::vector<std::string>{"lru"})
+                             .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{})
+                             .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(nullptr))
+                             .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(nullptr));
+}
 
-const auto default_l1d = champsim::modules::ModuleBuilder{}
-                             .add_parameter("sets_factor", 64)
-                             .add_parameter("ways", 12)
-                             .add_parameter("pq_size", 8)
+inline champsim::modules::ModuleBuilder default_l1d()
+{
+    return champsim::modules::ModuleBuilder{}
+                             .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+                             .add_parameter("num_sets", static_cast<uint32_t>(64))
+                             .add_parameter("num_ways", static_cast<uint32_t>(12))
+                             .add_parameter("pq_size", static_cast<std::size_t>(8))
+                             .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                             .add_parameter("hit_latency", static_cast<uint64_t>(2))
+                             .add_parameter("fill_latency", static_cast<uint64_t>(2))
                              .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
-                             .add_parameter("reset_prefetch_as_load", false)
+                             .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{1})
+                             .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{1})
+                             .add_parameter("prefetch_as_load", false)
+                             .add_parameter("match_offset_bits", true)
                              .add_parameter("virtual_prefetch", false)
-                             .add_parameter("wq_checks_full_addr", true)
-                             .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
-                             .add_parameter("prefetcher", "no")
-                             .add_parameter("replacement", "lru");
+                             .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                             .add_parameter("prefetcher_modules", std::vector<std::string>{"no"})
+                             .add_parameter("replacement_modules", std::vector<std::string>{"lru"})
+                             .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{})
+                             .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(nullptr))
+                             .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(nullptr));
+}
 
-const auto default_l2c = champsim::modules::ModuleBuilder{}
-                             .add_parameter("sets_factor", 512)
-                             .add_parameter("ways", 8)
-                             .add_parameter("pq_size", 16)
+inline champsim::modules::ModuleBuilder default_l2c()
+{
+    return champsim::modules::ModuleBuilder{}
+                             .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+                             .add_parameter("num_sets", static_cast<uint32_t>(512))
+                             .add_parameter("num_ways", static_cast<uint32_t>(8))
+                             .add_parameter("pq_size", static_cast<std::size_t>(16))
+                             .add_parameter("mshr_size", static_cast<uint32_t>(32))
+                             .add_parameter("hit_latency", static_cast<uint64_t>(4))
+                             .add_parameter("fill_latency", static_cast<uint64_t>(4))
                              .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
-                             .add_parameter("reset_prefetch_as_load", false)
+                             .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{1})
+                             .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{1})
+                             .add_parameter("prefetch_as_load", false)
+                             .add_parameter("match_offset_bits", false)
                              .add_parameter("virtual_prefetch", false)
-                             .add_parameter("wq_checks_full_addr", true)
-                             .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
-                             .add_parameter("prefetcher", "no")
-                             .add_parameter("replacement", "lru");
+                             .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                             .add_parameter("prefetcher_modules", std::vector<std::string>{"no"})
+                             .add_parameter("replacement_modules", std::vector<std::string>{"lru"})
+                             .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{})
+                             .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(nullptr))
+                             .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(nullptr));
+}
 
-const auto default_itlb = champsim::modules::ModuleBuilder{}
-                              .add_parameter("sets_factor", 16)
-                              .add_parameter("ways", 4)
-                              .add_parameter("pq_size", 0)
+inline champsim::modules::ModuleBuilder default_itlb()
+{
+    return champsim::modules::ModuleBuilder{}
+                              .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+                              .add_parameter("num_sets", static_cast<uint32_t>(16))
+                              .add_parameter("num_ways", static_cast<uint32_t>(4))
+                              .add_parameter("pq_size", static_cast<std::size_t>(0))
+                              .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                              .add_parameter("hit_latency", static_cast<uint64_t>(1))
+                              .add_parameter("fill_latency", static_cast<uint64_t>(1))
                               .add_parameter("offset_bits", champsim::data::bits{LOG2_PAGE_SIZE})
-                              .add_parameter("reset_prefetch_as_load", false)
+                              .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{1})
+                              .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{1})
+                              .add_parameter("prefetch_as_load", false)
+                              .add_parameter("match_offset_bits", false)
                               .add_parameter("virtual_prefetch", true)
-                              .add_parameter("wq_checks_full_addr", true)
-                              .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
-                              .add_parameter("prefetcher", "no")
-                              .add_parameter("replacement", "lru");
+                              .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                              .add_parameter("prefetcher_modules", std::vector<std::string>{"no"})
+                              .add_parameter("replacement_modules", std::vector<std::string>{"lru"})
+                              .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{})
+                              .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(nullptr))
+                              .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(nullptr));
+}
 
-const auto default_dtlb = champsim::modules::ModuleBuilder{}
-                              .add_parameter("sets_factor", 16)
-                              .add_parameter("ways", 4)
-                              .add_parameter("pq_size", 0)
-                              .add_parameter("mshr_size", 8)
+inline champsim::modules::ModuleBuilder default_dtlb()
+{
+    return champsim::modules::ModuleBuilder{}
+                              .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+                              .add_parameter("num_sets", static_cast<uint32_t>(16))
+                              .add_parameter("num_ways", static_cast<uint32_t>(4))
+                              .add_parameter("pq_size", static_cast<std::size_t>(0))
+                              .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                              .add_parameter("hit_latency", static_cast<uint64_t>(1))
+                              .add_parameter("fill_latency", static_cast<uint64_t>(1))
                               .add_parameter("offset_bits", champsim::data::bits{LOG2_PAGE_SIZE})
-                              .add_parameter("reset_prefetch_as_load", false)
+                              .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{1})
+                              .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{1})
+                              .add_parameter("prefetch_as_load", false)
+                              .add_parameter("match_offset_bits", false)
                               .add_parameter("virtual_prefetch", false)
-                              .add_parameter("wq_checks_full_addr", true)
-                              .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
-                              .add_parameter("prefetcher", "no")
-                              .add_parameter("replacement", "lru");
+                              .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                              .add_parameter("prefetcher_modules", std::vector<std::string>{"no"})
+                              .add_parameter("replacement_modules", std::vector<std::string>{"lru"})
+                              .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{})
+                              .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(nullptr))
+                              .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(nullptr));
+}
 
-const auto default_stlb = champsim::modules::ModuleBuilder{}
-                              .add_parameter("sets_factor", 64)
-                              .add_parameter("ways", 12)
-                              .add_parameter("pq_size", 0)
+inline champsim::modules::ModuleBuilder default_stlb()
+{
+    return champsim::modules::ModuleBuilder{}
+                              .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+                              .add_parameter("num_sets", static_cast<uint32_t>(64))
+                              .add_parameter("num_ways", static_cast<uint32_t>(12))
+                              .add_parameter("pq_size", static_cast<std::size_t>(0))
+                              .add_parameter("mshr_size", static_cast<uint32_t>(16))
+                              .add_parameter("hit_latency", static_cast<uint64_t>(2))
+                              .add_parameter("fill_latency", static_cast<uint64_t>(2))
                               .add_parameter("offset_bits", champsim::data::bits{LOG2_PAGE_SIZE})
-                              .add_parameter("reset_prefetch_as_load", false)
+                              .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{1})
+                              .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{1})
+                              .add_parameter("prefetch_as_load", false)
+                              .add_parameter("match_offset_bits", false)
                               .add_parameter("virtual_prefetch", false)
-                              .add_parameter("wq_checks_full_addr", true)
-                              .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
-                              .add_parameter("prefetcher", "no")
-                              .add_parameter("replacement", "lru");
+                              .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                              .add_parameter("prefetcher_modules", std::vector<std::string>{"no"})
+                              .add_parameter("replacement_modules", std::vector<std::string>{"lru"})
+                              .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{})
+                              .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(nullptr))
+                              .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(nullptr));
+}
 
-const auto default_llc = champsim::modules::ModuleBuilder{}
-                             .add_parameter("name", "LLC")
-                             .add_parameter("sets_factor", 2048)
-                             .add_parameter("ways", 16)
-                             .add_parameter("pq_size", 32)
+inline champsim::modules::ModuleBuilder default_llc()
+{
+    return champsim::modules::ModuleBuilder{}
+                             .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+                             .add_parameter("num_sets", static_cast<uint32_t>(2048))
+                             .add_parameter("num_ways", static_cast<uint32_t>(16))
+                             .add_parameter("pq_size", static_cast<std::size_t>(32))
+                             .add_parameter("mshr_size", static_cast<uint32_t>(64))
+                             .add_parameter("hit_latency", static_cast<uint64_t>(10))
+                             .add_parameter("fill_latency", static_cast<uint64_t>(10))
                              .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
-                             .add_parameter("reset_prefetch_as_load", false)
+                             .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{1})
+                             .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{1})
+                             .add_parameter("prefetch_as_load", false)
+                             .add_parameter("match_offset_bits", false)
                              .add_parameter("virtual_prefetch", false)
-                             .add_parameter("wq_checks_full_addr", true)
-                             .add_parameter("prefetch_activate", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
-                             .add_parameter("prefetcher", "no")
-                             .add_parameter("replacement", "lru");
+                             .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::PREFETCH})
+                             .add_parameter("prefetcher_modules", std::vector<std::string>{"no"})
+                             .add_parameter("replacement_modules", std::vector<std::string>{"lru"})
+                             .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{})
+                             .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(nullptr))
+                             .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(nullptr));
+}
 
-const auto default_ptw = champsim::modules::ModuleBuilder{}
-                              .add_parameter("bandwidth_factor", 2)
-                              .add_parameter("mshr_factor", 5)
-                              .add_parameter("pscl_5", std::vector<int>{1, 2})
-                              .add_parameter("pscl_4", std::vector<int>{1, 4})
-                              .add_parameter("pscl_3", std::vector<int>{2, 4})
-                              .add_parameter("pscl_2", std::vector<int>{4, 8});
+// PageTableWalker parameters - types must match get_parameter<T>() calls in ptw.cc
+inline champsim::modules::ModuleBuilder default_ptw()
+{
+    return champsim::modules::ModuleBuilder{}
+                              .add_parameter("clock_period", champsim::chrono::picoseconds{250})
+                              .add_parameter("cpu", static_cast<uint32_t>(0))
+                              .add_parameter("mshr_size", static_cast<uint32_t>(10))
+                              .add_parameter("max_tag_check", champsim::bandwidth::maximum_type{2})
+                              .add_parameter("max_fill", champsim::bandwidth::maximum_type{2})
+                              .add_parameter("latency", static_cast<unsigned>(0))
+                              .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{})
+                              .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(nullptr))
+                              .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(nullptr))
+                              .add_parameter("vmem", static_cast<champsim::modules::vmem_module*>(nullptr))
+                              .add_parameter("pscl_dims", std::array<std::array<uint32_t, 3>, 16>{{
+                                  {5, 1, 2}, {4, 1, 4}, {3, 2, 4}, {2, 4, 8}}});
+}
+
+// champsim::channel parameters - types must match get_parameter<T>() calls in channel.cc
+inline champsim::modules::ModuleBuilder default_channel()
+{
+    return champsim::modules::ModuleBuilder{}
+                              .add_parameter("rq_size", static_cast<std::size_t>(32))
+                              .add_parameter("pq_size", static_cast<std::size_t>(32))
+                              .add_parameter("wq_size", static_cast<std::size_t>(32))
+                              .add_parameter("offset_bits", champsim::data::bits{0})
+                              .add_parameter("match_offset_bits", false);
+}
+
+// MEMORY_CONTROLLER parameters - types must match get_parameter<T>() calls in dram_controller.cc
+inline champsim::modules::ModuleBuilder default_memory_controller()
+{
+    return champsim::modules::ModuleBuilder{}
+                              .add_parameter("dbus_period", champsim::chrono::picoseconds{3200})
+                              .add_parameter("mc_period", champsim::chrono::picoseconds{6400})
+                              .add_parameter("t_rp", static_cast<std::size_t>(18))
+                              .add_parameter("t_rcd", static_cast<std::size_t>(18))
+                              .add_parameter("t_cas", static_cast<std::size_t>(18))
+                              .add_parameter("t_ras", static_cast<std::size_t>(38))
+                              .add_parameter("refresh_period", champsim::chrono::microseconds{64000})
+                              .add_parameter("ul_channels", std::vector<champsim::modules::channel_module*>{})
+                              .add_parameter("rq_size", static_cast<std::size_t>(64))
+                              .add_parameter("wq_size", static_cast<std::size_t>(64))
+                              .add_parameter("channels", static_cast<std::size_t>(1))
+                              .add_parameter("channel_width", champsim::data::bytes{8})
+                              .add_parameter("rows", static_cast<std::size_t>(1024))
+                              .add_parameter("columns", static_cast<std::size_t>(1024))
+                              .add_parameter("ranks", static_cast<std::size_t>(4))
+                              .add_parameter("bankgroups", static_cast<std::size_t>(4))
+                              .add_parameter("banks", static_cast<std::size_t>(4))
+                              .add_parameter("refreshes_per_period", static_cast<std::size_t>(8192));
+}
+
+// VirtualMemory parameters - types must match get_parameter<T>() calls in vmem.cc
+inline champsim::modules::ModuleBuilder default_vmem()
+{
+    return champsim::modules::ModuleBuilder{}
+                              .add_parameter("page_table_page_size", champsim::data::bytes{4096})
+                              .add_parameter("page_table_levels", static_cast<std::size_t>(4))
+                              .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{6400000}) // 6400ns in picoseconds
+                              .add_parameter("randomization_seed", std::optional<uint64_t>{});
+}
 } // namespace champsim::defaults
 
 #endif

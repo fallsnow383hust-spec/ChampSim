@@ -53,7 +53,7 @@ class CACHE : public champsim::modules::cache_module
       "Prefetchers may not specify arbitrary fill levels. Use CACHE::prefetch_line(pf_addr, fill_this_level, prefetch_metadata) instead.")]] FILL_LEVEL{
       FILL_L1 = 1, FILL_L2 = 2, FILL_LLC = 4, FILL_DRC = 8, FILL_DRAM = 16};
 
-  using channel_type = champsim::channel;
+  using channel_type = champsim::modules::channel_module;
   using request_type = typename channel_type::request_type;
   using response_type = typename channel_type::response_type;
 
@@ -137,7 +137,7 @@ private:
   bool should_activate_prefetcher(const T& pkt) const;
 
   template <bool>
-  auto initiate_tag_check(champsim::channel* ul = nullptr);
+  auto initiate_tag_check(champsim::modules::channel_module* ul = nullptr);
 
   template <typename T>
   champsim::address module_address(const T& element) const;
@@ -252,7 +252,11 @@ public:
   // NOLINTEND(readability-make-member-function-const)
 
   explicit CACHE(champsim::modules::ModuleBuilder builder)
-      : champsim::modules::cache_module(builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), upper_levels(builder.get_parameter<std::vector<champsim::channel*>>("upper_levels")), lower_level(builder.get_parameter<champsim::channel*>("lower_level")), lower_translate(builder.get_parameter<champsim::channel*>("lower_translate")), NAME(builder.get_name()), NUM_SET(builder.get_parameter<uint32_t>("num_sets")), NUM_WAY(builder.get_parameter<uint32_t>("num_ways")), MSHR_SIZE(builder.get_parameter<uint32_t>("mshr_size")), PQ_SIZE(builder.get_parameter<std::size_t>("pq_size")), HIT_LATENCY(builder.get_parameter<uint64_t>("hit_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")),
+      : champsim::modules::cache_module(builder.get_parameter<champsim::chrono::picoseconds>("clock_period")),
+        upper_levels(builder.get_parameter<std::vector<champsim::modules::channel_module*>>("upper_levels")),
+        lower_level(builder.get_parameter<champsim::modules::channel_module*>("lower_level")),
+        lower_translate(builder.get_parameter<champsim::modules::channel_module*>("lower_translate")),
+        NAME(builder.get_name()), NUM_SET(builder.get_parameter<uint32_t>("num_sets")), NUM_WAY(builder.get_parameter<uint32_t>("num_ways")), MSHR_SIZE(builder.get_parameter<uint32_t>("mshr_size")), PQ_SIZE(builder.get_parameter<std::size_t>("pq_size")), HIT_LATENCY(builder.get_parameter<uint64_t>("hit_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")),
         FILL_LATENCY(builder.get_parameter<uint64_t>("fill_latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), OFFSET_BITS(builder.get_parameter<champsim::data::bits>("offset_bits")), MAX_TAG(builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_bandwidth")), MAX_FILL(builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill_bandwidth")),
         prefetch_as_load(builder.get_parameter<bool>("prefetch_as_load")), match_offset_bits(builder.get_parameter<bool>("match_offset_bits")), virtual_prefetch(builder.get_parameter<bool>("virtual_prefetch")), pref_activate_mask(builder.get_parameter<std::vector<access_type>>("pref_activate_mask"))
   {
@@ -265,10 +269,10 @@ public:
       builder.get_parameter<std::vector<std::string>>("replacement_modules").push_back("lru");
     }
     for(auto s : builder.get_parameter<std::vector<std::string>>("prefetcher_modules")) {
-      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,this}));
+      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)}));
     }
     for(auto s : builder.get_parameter<std::vector<std::string>>("replacement_modules")) {
-      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,this}));
+      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)}));
     }
   }
 

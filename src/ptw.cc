@@ -30,7 +30,7 @@
 #include "vmem.h"
 
 PageTableWalker::PageTableWalker(champsim::modules::ModuleBuilder builder)
-    : champsim::modules::page_table_walker_module(builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), upper_levels(builder.get_parameter<std::vector<champsim::channel*>>("upper_levels")), lower_level(builder.get_parameter<champsim::channel*>("lower_level")), NAME(builder.get_name()),
+    : champsim::modules::page_table_walker_module(builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), upper_levels(builder.get_parameter<std::vector<champsim::modules::channel_module*>>("upper_levels")), lower_level(builder.get_parameter<champsim::modules::channel_module*>("lower_level")), NAME(builder.get_name()),
       MSHR_SIZE(builder.get_parameter<uint32_t>("mshr_size")),
       MAX_READ(builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_check")),
       MAX_FILL(builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill")),
@@ -70,7 +70,7 @@ auto PageTableWalker::handle_read(const request_type& handle_pkt, channel_type* 
   fwd_mshr.address = champsim::address{champsim::splice(champsim::page_number{walk_init.ptw_addr}, champsim::page_offset{walk_offset})};
   fwd_mshr.v_address = handle_pkt.address;
   if (handle_pkt.response_requested) {
-    fwd_mshr.to_return = {&ul->returned};
+    fwd_mshr.to_return = {&ul->get_returned()};
   }
 
   if constexpr (champsim::debug_print) {
@@ -127,9 +127,9 @@ long PageTableWalker::operate()
   auto is_ready = [time = current_time](const auto& pkt) {
     return pkt.data.is_ready_at(time);
   };
-  std::for_each(std::cbegin(lower_level->returned), std::cend(lower_level->returned), [this](const auto& pkt) { this->finish_packet(pkt); });
-  progress += std::distance(std::cbegin(lower_level->returned), std::cend(lower_level->returned));
-  lower_level->returned.clear();
+  std::for_each(std::cbegin(lower_level->get_returned()), std::cend(lower_level->get_returned()), [this](const auto& pkt) { this->finish_packet(pkt); });
+  progress += std::distance(std::cbegin(lower_level->get_returned()), std::cend(lower_level->get_returned()));
+  lower_level->get_returned().clear();
 
   std::vector<mshr_type> next_steps{};
 
@@ -156,7 +156,7 @@ long PageTableWalker::operate()
 
   champsim::bandwidth tag_bw{MAX_READ};
   for (auto* ul : upper_levels) {
-    auto [rq_begin, rq_end] = champsim::get_span_p(std::cbegin(ul->RQ), std::cend(ul->RQ), tag_bw, [&next_steps, ul, this](const auto& pkt) {
+    auto [rq_begin, rq_end] = champsim::get_span_p(std::cbegin(ul->get_rq()), std::cend(ul->get_rq()), tag_bw, [&next_steps, ul, this](const auto& pkt) {
       auto result = this->handle_read(pkt, ul);
       if (result.has_value()) {
         next_steps.emplace_back(*result);
@@ -164,7 +164,7 @@ long PageTableWalker::operate()
       return result.has_value();
     });
     tag_bw.consume(std::distance(rq_begin, rq_end));
-    ul->RQ.erase(rq_begin, rq_end);
+    ul->get_rq().erase(rq_begin, rq_end);
   }
 
   MSHR.insert(std::cend(MSHR), std::begin(next_steps), std::end(next_steps));
@@ -228,8 +228,8 @@ void PageTableWalker::begin_phase()
   for (auto* ul : upper_levels) {
     channel_type::stats_type ul_new_roi_stats;
     channel_type::stats_type ul_new_sim_stats;
-    ul->roi_stats = ul_new_roi_stats;
-    ul->sim_stats = ul_new_sim_stats;
+    ul->get_roi_stats() = ul_new_roi_stats;
+    ul->get_sim_stats() = ul_new_sim_stats;
   }
 }
 
@@ -242,4 +242,4 @@ void PageTableWalker::print_deadlock()
 }
 // LCOV_EXCL_STOP
 
-champsim::modules::page_table_walker_module::register_module<PageTableWalker> ptw_module("PTW");
+champsim::modules::page_table_walker_module::register_module<PageTableWalker> ptw_module("DEFAULT_PTW");

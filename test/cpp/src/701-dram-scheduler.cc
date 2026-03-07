@@ -73,24 +73,21 @@ SCENARIO("A series of reads arrive at the memory controller and are reordered")
     // is actually either 1, 2, or 3 since timing of 33% greater doesn't work out well
     const std::size_t bankgroup_reaccess_delay_l = 1;
 
-    MEMORY_CONTROLLER uut{clock_period,
-                          clock_period * 2,
-                          trp_cycles,
-                          trcd_cycles,
-                          tcas_cycles,
-                          tras_cycles,
-                          champsim::chrono::microseconds{64000},
-                          {},
-                          64,
-                          64,
-                          DRAM_CHANNELS,
-                          champsim::data::bytes{8},
-                          DRAM_ROWS,
-                          DRAM_COLUMNS,
-                          DRAM_RANKS,
-                          DRAM_BANKGROUPS,
-                          DRAM_BANKS,
-                          REFRESHES_PER_PERIOD};
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+                              .add_parameter("dbus_period", clock_period)
+                              .add_parameter("mc_period", champsim::chrono::picoseconds{clock_period * 2})
+                              .add_parameter("t_rp", trp_cycles)
+                              .add_parameter("t_rcd", trcd_cycles)
+                              .add_parameter("t_cas", tcas_cycles)
+                              .add_parameter("t_ras", tras_cycles)
+                              .add_parameter("channels", DRAM_CHANNELS)
+                              .add_parameter("banks", DRAM_BANKS)
+                              .add_parameter("ranks", DRAM_RANKS)
+                              .add_parameter("bankgroups", DRAM_BANKGROUPS)
+                              .add_parameter("columns", DRAM_COLUMNS)
+                              .add_parameter("rows", DRAM_ROWS)
+                              .add_parameter("refreshes_per_period", REFRESHES_PER_PERIOD)
+                              .add_parameter("channel_width", champsim::data::bytes{PREFETCH_SIZE})};
     // test
     uut.warmup = false;
     uut.channels[0].warmup = false;

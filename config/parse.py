@@ -329,7 +329,7 @@ class NormalizedConfiguration:
         )
 
         pmem = util.chain(self.pmem, {
-            'model': 'MEMORY_CONTROLLER', 'name': 'DRAM', 'data_rate': 3200, 'frequency': 1600, 'channels': 1, 'ranks': 1, 'bankgroups': 8, 'banks': 4, 'bank_rows': 65536, 'bank_columns': 1024,
+            'model': 'DEFAULT_MEMORY_CONTROLLER', 'name': 'DRAM', 'data_rate': 3200, 'frequency': 1600, 'channels': 1, 'ranks': 1, 'bankgroups': 8, 'banks': 4, 'bank_rows': 65536, 'bank_columns': 1024,
             'channel_width': 8, 'wq_size': 64, 'rq_size': 64, 'tRP': 24, 'tRCD': 24, 'tCAS': 24, 'tRAS' : 52,
             'refresh_period': 32, 'refreshes_per_period': 8192
         })
@@ -339,7 +339,7 @@ class NormalizedConfiguration:
         vmem = util.chain(
             transform_for_keys(self.vmem, ('pte_page_size',), int_or_prefixed_size),
             self.vmem,
-            { 'name' : 'VMEM', 'model': 'VMEM', 'pte_page_size': int_or_prefixed_size("4kB"), 'num_levels': 5, 'minor_fault_penalty': 200, 'randomization': 1}
+            { 'name' : 'VMEM', 'model': 'DEFAULT_VMEM', 'pte_page_size': int_or_prefixed_size("4kB"), 'num_levels': 5, 'minor_fault_penalty': 200, 'randomization': 1}
         )
 
         # Give cores numeric indices and default cache names
@@ -348,7 +348,7 @@ class NormalizedConfiguration:
         path_root_names = tuple(tuple(cpu[name] for cpu in cores) for name in ('L1I', 'L1D', 'ITLB', 'DTLB'))
 
         # Instantiate any missing default caches
-        caches = util.combine_named(self.caches.values(), ({ 'model': 'CACHE', 'name': 'LLC' },), *map(defaults.cache_core_defaults, cores))
+        caches = util.combine_named(self.caches.values(), ({ 'model': 'DEFAULT_CACHE', 'name': 'LLC' },), *map(defaults.cache_core_defaults, cores))
         ptws = util.combine_named(self.ptws.values(), *map(defaults.ptw_core_defaults, cores))
 
         # Remove caches that are inaccessible
@@ -415,12 +415,12 @@ class NormalizedConfiguration:
             # The listed keys are deprecated. For now, permit them but print a warning
             (do_deprecation(ptw, ptw_deprecation_keys) for ptw in ptws.values()),
 
-            ({ 'name': cpu['PTW'], 'frequency': cpu.get('frequency'), 'cpu': cpu.get('_index'), '_queue_factor': 32 } for cpu in cores)
+            ({ 'name': cpu['PTW'], 'model': 'DEFAULT_PTW', 'frequency': cpu.get('frequency'), 'cpu': cpu.get('_index'), '_queue_factor': 32 } for cpu in cores)
         )
 
         cores = list(util.combine_named(cores,
             ({
-                'model': 'O3_CPU',
+                'model': 'DEFAULT_CORE',
                 'name': c['name'],
                 '_branch_predictor_data':
                     [*map(branch_parse, util.wrap_list(c.get('branch_predictor', 'hashed_perceptron')))],

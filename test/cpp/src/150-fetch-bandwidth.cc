@@ -3,6 +3,7 @@
 #include "instr.h"
 #include "mocks.hpp"
 #include "ooo_cpu.h"
+#include "defaults.hpp"
 
 SCENARIO("The fetch bandwidth limits the number of packets issued each cycle")
 {
@@ -14,7 +15,7 @@ SCENARIO("The fetch bandwidth limits the number of packets issued each cycle")
     do_nothing_MRC mock_L1I;
     do_nothing_MRC mock_L1D;
     O3_CPU uut{
-        champsim::core_builder{}.fetch_queues(&mock_L1I.queues).data_queues(&mock_L1D.queues).l1i_bandwidth(champsim::bandwidth::maximum_type{bandwidth})};
+        champsim::modules::ModuleBuilder{"uut_core", "CPU", nullptr, champsim::defaults::default_core()}.add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues)).add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues)).add_parameter("l1i_bandwidth", champsim::bandwidth::maximum_type{bandwidth})};
 
     std::array<champsim::operable*, 3> elements = {&uut, &mock_L1I, &mock_L1D};
 

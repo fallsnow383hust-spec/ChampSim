@@ -116,8 +116,8 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
       [knob_cloudsuite, repeat = simulation_given, i = uint8_t(0)](auto name) mutable { return get_tracereader(name, i++, knob_cloudsuite, repeat); });
 
   std::vector<champsim::phase_info> phases{
-      {champsim::phase_info{"Warmup", true, warmup_instructions, std::vector<std::size_t>(std::size(trace_names), 0), trace_names},
-       champsim::phase_info{"Simulation", false, simulation_instructions, std::vector<std::size_t>(std::size(trace_names), 0), trace_names}}};
+      {champsim::phase_info{"Warmup", true, static_cast<uint64_t>(warmup_instructions), std::vector<std::size_t>(std::size(trace_names), 0), trace_names},
+       champsim::phase_info{"Simulation", false, static_cast<uint64_t>(simulation_instructions), std::vector<std::size_t>(std::size(trace_names), 0), trace_names}}};
 
   for (auto& p : phases) {
     std::iota(std::begin(p.trace_index), std::end(p.trace_index), 0);

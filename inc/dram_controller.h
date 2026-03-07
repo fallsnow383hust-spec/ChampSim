@@ -33,6 +33,7 @@
 #include "dram_stats.h"
 #include "extent_set.h"
 #include "operable.h"
+#include "packet.h"
 
 struct DRAM_ADDRESS_MAPPING {
   constexpr static std::size_t SLICER_OFFSET_IDX = 0;
@@ -91,7 +92,7 @@ struct DRAM_ADDRESS_MAPPING {
 };
 
 struct DRAM_CHANNEL final : public champsim::operable {
-  using response_type = typename champsim::channel::response_type;
+  using response_type = champsim::response;
 
   const DRAM_ADDRESS_MAPPING address_mapping;
 
@@ -111,7 +112,7 @@ struct DRAM_CHANNEL final : public champsim::operable {
     std::vector<uint64_t> instr_depend_on_me{};
     std::vector<std::deque<response_type>*> to_return{};
 
-    explicit request_type(const typename champsim::channel::request_type& req);
+    explicit request_type(const champsim::request& req);
   };
   using value_type = request_type;
   using queue_type = std::vector<std::optional<value_type>>;
@@ -188,14 +189,14 @@ struct DRAM_CHANNEL final : public champsim::operable {
 
 class MEMORY_CONTROLLER : public champsim::modules::memory_controller_module
 {
-  using channel_type = champsim::channel;
+  using channel_type = champsim::modules::channel_module;
   using request_type = typename channel_type::request_type;
   using response_type = typename channel_type::response_type;
   std::vector<channel_type*> queues;
   const champsim::data::bytes channel_width;
 
   void initiate_requests();
-  bool add_rq(const request_type& packet, champsim::channel* ul);
+  bool add_rq(const request_type& packet, champsim::modules::channel_module* ul);
   bool add_wq(const request_type& packet);
 
   const DRAM_ADDRESS_MAPPING address_mapping;

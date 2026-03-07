@@ -17,12 +17,11 @@ SCENARIO("The va_ampm_lite prefetcher issues prefetches when addresses stride in
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return x.v_address == y.v_address;
     }};
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("453-uut-["+std::to_string(stride)+"]")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .lower_translate(&mock_lt.queues)
-      .prefetcher("va_ampm_lite")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_lt.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"va_ampm_lite"})
     };
 
     std::array<champsim::operable*, 4> elements{{&mock_ll, &mock_lt, &mock_ul, &uut}};
@@ -103,12 +102,11 @@ TEST_CASE("va_ampm_lite benchmark")
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return x.v_address == y.v_address;
     }};
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("453-uut-benchmark[va_ampm_lite::prefetcher_initialize()]")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .lower_translate(&mock_lt.queues)
-      .prefetcher("va_ampm_lite")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_lt.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"va_ampm_lite"})
     };
     meter.measure([&] { return uut.impl_prefetcher_initialize(); });
   };
@@ -120,12 +118,11 @@ TEST_CASE("va_ampm_lite benchmark")
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return x.v_address == y.v_address;
     }};
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("453-uut-benchmark[va_ampm_lite::prefetcher_cache_operate()]")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .lower_translate(&mock_lt.queues)
-      .prefetcher("va_ampm_lite")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_lt.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"va_ampm_lite"})
     };
     meter.measure([&] { return uut.impl_prefetcher_cache_operate(champsim::address{}, champsim::address{}, false, false, access_type::LOAD,uint32_t{}); });
   };
@@ -137,12 +134,11 @@ TEST_CASE("va_ampm_lite benchmark")
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return x.v_address == y.v_address;
     }};
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("453-uut-benchmark[va_ampm_lite::prefetcher_cycle_operate()]")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .lower_translate(&mock_lt.queues)
-      .prefetcher("va_ampm_lite")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_lt.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"va_ampm_lite"})
     };
     meter.measure([&] { return uut.impl_prefetcher_cycle_operate(); });
   };
@@ -154,12 +150,11 @@ TEST_CASE("va_ampm_lite benchmark")
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return x.v_address == y.v_address;
     }};
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("453-uut-benchmark[va_ampm_lite::prefetcher_cache_fill()]")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .lower_translate(&mock_lt.queues)
-      .prefetcher("va_ampm_lite")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_lt.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"va_ampm_lite"})
     };
     meter.measure([&] { return uut.impl_prefetcher_cache_fill(champsim::address{}, long{}, long{}, uint8_t{}, champsim::address{}, uint32_t{}); });
   };
@@ -171,12 +166,11 @@ TEST_CASE("va_ampm_lite benchmark")
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return x.v_address == y.v_address;
     }};
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("453-uut-benchmark[va_ampm_lite::prefetcher_branch_operate()]")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .lower_translate(&mock_lt.queues)
-      .prefetcher("va_ampm_lite")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_lt.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"va_ampm_lite"})
     };
     meter.measure([&] { return uut.impl_prefetcher_branch_operate(champsim::address{}, uint8_t{}, champsim::address{}); });
   };
@@ -188,12 +182,11 @@ TEST_CASE("va_ampm_lite benchmark")
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return x.v_address == y.v_address;
     }};
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("453-uut-benchmark[va_ampm_lite::prefetcher_final_stats()]")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .lower_translate(&mock_lt.queues)
-      .prefetcher("va_ampm_lite")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_lt.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"va_ampm_lite"})
     };
     meter.measure([&] { return uut.impl_prefetcher_final_stats(); });
   };

@@ -38,7 +38,7 @@ private:
   std::map<std::pair<uint32_t, champsim::page_number>, champsim::page_number> vpage_to_ppage_map;
   std::map<std::tuple<uint32_t, uint32_t, champsim::address_slice<champsim::dynamic_extent>>, champsim::address> page_table;
   std::optional<uint64_t> randomization_seed;
-  MEMORY_CONTROLLER& dram;
+  champsim::modules::memory_controller_module* dram;
 
 public:
   const champsim::chrono::clock::duration minor_fault_penalty;

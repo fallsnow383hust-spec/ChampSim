@@ -15,11 +15,10 @@ SCENARIO("The ip_stride prefetcher issues prefetches when the IP matches")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("452-uut-["+std::to_string(stride)+"]")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .prefetcher("ip_stride")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"ip_stride"})
     };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};

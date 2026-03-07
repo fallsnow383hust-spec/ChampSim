@@ -126,7 +126,7 @@ def get_cpu_builder(cpu, caches, ul_pairs):
         local_params['^clock_period'] = int(1000000/cpu['frequency'])
 
     builder_parts = itertools.chain(util.multiline(itertools.chain(
-        ('champsim::modules::ModuleBuilder{{"{name}","{model}",this, champsim::defaults::default_core}}',),
+        ('champsim::modules::ModuleBuilder{{"{name}","{model}",this, champsim::defaults::default_core()}}',),
         required_parts,
         *(util.wrap_list(v) for k,v in core_builder_parts.items() if k in cpu),
         (v for k,v in dib_builder_parts.items() if k in cpu.get('DIB',{}))
@@ -199,7 +199,7 @@ def get_ptw_builder(ptw, ul_pairs):
         local_params['^clock_period'] = int(1000000/ptw['frequency'])
 
     builder_parts = itertools.chain(util.multiline(itertools.chain(
-        ('champsim::modules::ModuleBuilder{{"{name}","{model}",this, champsim::defaults::default_ptw}}',),
+        ('champsim::modules::ModuleBuilder{{"{name}","{model}",this, champsim::defaults::default_ptw()}}',),
         required_parts,
         (v for k,v in ptw_builder_parts.items() if k in ptw),
         (v for keys,v in local_ptw_builder_parts.items() if any(k in ptw for k in keys))
@@ -311,7 +311,7 @@ def get_queue_info(ul_pairs, decoration):
     for ll, ul in ul_pairs:
         temp_queue_info_entry = decoration.get(ll).copy()
         temp_queue_info_entry['name'] = ul+'_'+ll+'_channel'
-        temp_queue_info_entry['model'] = 'CHANNEL'
+        temp_queue_info_entry['model'] = 'DEFAULT_CHANNEL'
         temp_queue_info.append(temp_queue_info_entry)
     return temp_queue_info
 

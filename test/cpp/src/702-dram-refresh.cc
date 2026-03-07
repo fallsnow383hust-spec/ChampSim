@@ -102,7 +102,7 @@ SCENARIO("The memory controller refreshes each bank at the proper rate")
 {
   GIVEN("A random request stream to the memory controller")
   {
-    champsim::channel channel_uut{32, 32, 32, champsim::data::bits{8}, false};
+    champsim::channel channel_uut{champsim::modules::ModuleBuilder{"channel_uut", "DEFAULT_CHANNEL", nullptr, champsim::defaults::default_channel()}.add_parameter("rq_size", static_cast<std::size_t>(32)).add_parameter("pq_size", static_cast<std::size_t>(32)).add_parameter("wq_size", static_cast<std::size_t>(32)).add_parameter("offset_bits", champsim::data::bits{8})};
     const std::size_t DRAM_CHANNELS = 1;
     const std::size_t DRAM_BANKS = 4;
     const std::size_t DRAM_BANKGROUPS = 8;
@@ -115,24 +115,22 @@ SCENARIO("The memory controller refreshes each bank at the proper rate")
     auto REFRESHES_PER_PERIOD = GENERATE(as<std::size_t>{}, 8192, 16384);
     const champsim::chrono::picoseconds tREF{refresh_period / REFRESHES_PER_PERIOD};
 
-    MEMORY_CONTROLLER uut{champsim::chrono::picoseconds{312},
-                          champsim::chrono::picoseconds{624},
-                          std::size_t{24},
-                          std::size_t{24},
-                          std::size_t{24},
-                          std::size_t{52},
-                          refresh_period,
-                          {&channel_uut},
-                          64,
-                          64,
-                          DRAM_CHANNELS,
-                          champsim::data::bytes{8},
-                          DRAM_ROWS,
-                          DRAM_COLUMNS,
-                          DRAM_RANKS,
-                          DRAM_BANKGROUPS,
-                          DRAM_BANKS,
-                          REFRESHES_PER_PERIOD};
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+                              .add_parameter("dbus_period", champsim::chrono::picoseconds{312})
+                              .add_parameter("mc_period", champsim::chrono::picoseconds{624})
+                              .add_parameter("t_rp", static_cast<std::size_t>(24))
+                              .add_parameter("t_rcd", static_cast<std::size_t>(24))
+                              .add_parameter("t_cas", static_cast<std::size_t>(24))
+                              .add_parameter("t_ras", static_cast<std::size_t>(52))
+                              .add_parameter("refresh_period", refresh_period)
+                              .add_parameter("refreshes_per_period", REFRESHES_PER_PERIOD)
+                              .add_parameter("channels", DRAM_CHANNELS)
+                              .add_parameter("banks", DRAM_BANKS)
+                              .add_parameter("bankgroups", DRAM_BANKGROUPS)
+                              .add_parameter("ranks", DRAM_RANKS)
+                              .add_parameter("columns", DRAM_COLUMNS)
+                              .add_parameter("rows", DRAM_ROWS)
+                              .add_parameter("ul_channels", std::vector<champsim::modules::channel_module*>{&channel_uut})};
     uut.warmup = false;
     uut.channels[0].warmup = false;
 

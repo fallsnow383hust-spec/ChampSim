@@ -9,8 +9,8 @@
 
 namespace test
 {
-std::map<CACHE*, std::vector<uint32_t>> metadata_operate_collector;
-std::map<CACHE*, std::vector<uint32_t>> metadata_fill_collector;
+std::map<champsim::modules::cache_module*, std::vector<uint32_t>> metadata_operate_collector;
+std::map<champsim::modules::cache_module*, std::vector<uint32_t>> metadata_fill_collector;
 } // namespace test
 
 struct metadata_collector : champsim::modules::prefetcher {
@@ -29,7 +29,7 @@ struct metadata_collector : champsim::modules::prefetcher {
     return metadata_in;
   }
 
-  metadata_collector(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
+  metadata_collector(champsim::modules::ModuleBuilder builder) {}
 };
 
 template <uint32_t to_emit>
@@ -39,7 +39,7 @@ struct metadata_fill_emitter : champsim::modules::prefetcher {
   uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) { return metadata_in; }
   uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t) { return to_emit; }
 
-  metadata_fill_emitter(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
+  metadata_fill_emitter(champsim::modules::ModuleBuilder builder) {}
 };
 champsim::modules::prefetcher::register_module<metadata_collector> mc_register("metadata_collector");
 
@@ -51,24 +51,22 @@ SCENARIO("Prefetch metadata from an issued prefetch is seen in the lower level")
     constexpr uint64_t fill_latency = 2;
     do_nothing_MRC mock_ll;
     champsim::channel lower_queues{};
-    CACHE lower{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("432a-lower")
-      .upper_levels({&lower_queues})
-      .lower_level(&mock_ll.queues)
-      .hit_latency(hit_latency)
-      .fill_latency(fill_latency)
-      .prefetch_activate(access_type::PREFETCH)
-      .prefetcher("metadata_collector")
+    CACHE lower{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&lower_queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::PREFETCH})
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"metadata_collector"})
     };
-    CACHE upper{champsim::cache_builder{champsim::defaults::default_l1d}
-                    .name("432a-upper")
-                    .sets(64)
-                    .mshr_size(1)
-                    .tag_bandwidth(champsim::bandwidth::maximum_type{1})
-                    .fill_bandwidth(champsim::bandwidth::maximum_type{1})
-                    .lower_level(&lower_queues)
-                    .hit_latency(hit_latency)
-                    .fill_latency(fill_latency)};
+    CACHE upper{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+                    .add_parameter("num_sets", static_cast<uint32_t>(64))
+                    .add_parameter("mshr_size", static_cast<uint32_t>(1))
+                    .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{1})
+                    .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{1})
+                    .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&lower_queues))
+                    .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                    .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))};
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &lower, &upper}};
 
@@ -112,22 +110,20 @@ SCENARIO("Prefetch metadata from an filled block is seen in the upper level")
     champsim::channel lower_queues{};
     to_rq_MRP mock_ul;
     champsim::modules::prefetcher::register_module<metadata_fill_emitter<seed_metadata>> mfe_register("metadata_fill_emitter_seed_1");
-    CACHE lower{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("432b-lower")
-      .upper_levels({&lower_queues})
-      .lower_level(&mock_ll.queues)
-      .hit_latency(hit_latency)
-      .fill_latency(fill_latency)
-      .prefetcher("metadata_fill_emitter_seed_1")
+    CACHE lower{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&lower_queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"metadata_fill_emitter_seed_1"})
     };
 
-    CACHE upper{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("432b-upper")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&lower_queues)
-      .hit_latency(hit_latency)
-      .fill_latency(fill_latency)
-      .prefetcher("metadata_collector")
+    CACHE upper{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&lower_queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"metadata_collector"})
     };
 
     std::array<champsim::operable*, 4> elements{{&mock_ll, &lower, &upper, &mock_ul}};

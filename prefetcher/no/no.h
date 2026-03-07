@@ -19,7 +19,7 @@ public:
   // void prefetcher_cycle_operate() {}
   // void prefetcher_final_stats() {}
 
-  no(champsim::modules::ModuleBuilder builder) {};
+  no(champsim::modules::ModuleBuilder /*builder*/) {};
 };
 
 #endif

@@ -32,12 +32,12 @@
 #include "util/bits.h"
 #include "util/span.h"
 
-CACHE::CACHE(CACHE&& other) : champsim::modules::cache_module(other.clock_period)
+CACHE::CACHE(CACHE&& /*other*/) : champsim::modules::cache_module(champsim::chrono::picoseconds{})
 {
   assert(false && "CACHE move constructor called, but this is not expected to be used in a way that requires moving. Please report this to the developers.");
 }
 
-auto CACHE::operator=(CACHE&& other) -> CACHE&
+auto CACHE::operator=(CACHE&& /*other*/) -> CACHE&
 {
   assert(false && "CACHE move assignment operator called, but this is not expected to be used in a way that requires moving. Please report this to the developers.");
   return *this;
@@ -342,7 +342,7 @@ bool CACHE::handle_write(const tag_lookup_type& handle_pkt)
 }
 
 template <bool UpdateRequest>
-auto CACHE::initiate_tag_check(champsim::channel* ul)
+auto CACHE::initiate_tag_check(champsim::modules::channel_module* ul)
 {
   return [time = current_time + (warmup ? champsim::chrono::clock::duration{} : HIT_LATENCY), ul](const auto& entry) {
     CACHE::tag_lookup_type retval{entry};
@@ -350,7 +350,7 @@ auto CACHE::initiate_tag_check(champsim::channel* ul)
 
     if constexpr (UpdateRequest) {
       if (entry.response_requested) {
-        retval.to_return = {&ul->returned};
+        retval.to_return = {&ul->get_returned()};
       }
     } else {
       (void)ul; // supress warning about ul being unused
@@ -377,15 +377,15 @@ long CACHE::operate()
   };
 
   // Finish returns
-  std::for_each(std::cbegin(lower_level->returned), std::cend(lower_level->returned), [this](const auto& pkt) { this->finish_packet(pkt); });
-  progress += std::distance(std::cbegin(lower_level->returned), std::cend(lower_level->returned));
-  lower_level->returned.clear();
+  std::for_each(std::cbegin(lower_level->get_returned()), std::cend(lower_level->get_returned()), [this](const auto& pkt) { this->finish_packet(pkt); });
+  progress += std::distance(std::cbegin(lower_level->get_returned()), std::cend(lower_level->get_returned()));
+  lower_level->get_returned().clear();
 
   // Finish translations
   if (lower_translate != nullptr) {
-    std::for_each(std::cbegin(lower_translate->returned), std::cend(lower_translate->returned), [this](const auto& pkt) { this->finish_translation(pkt); });
-    progress += std::distance(std::cbegin(lower_translate->returned), std::cend(lower_translate->returned));
-    lower_translate->returned.clear();
+    std::for_each(std::cbegin(lower_translate->get_returned()), std::cend(lower_translate->get_returned()), [this](const auto& pkt) { this->finish_translation(pkt); });
+    progress += std::distance(std::cbegin(lower_translate->get_returned()), std::cend(lower_translate->get_returned()));
+    lower_translate->get_returned().clear();
   }
 
   // Perform fills
@@ -419,7 +419,7 @@ long CACHE::operate()
           : champsim::bandwidth::maximum_type{};
 
   for (auto* ul : upper_levels) {
-    for (auto q : {std::ref(ul->WQ), std::ref(ul->RQ), std::ref(ul->PQ)}) {
+    for (auto q : {std::ref(ul->get_wq()), std::ref(ul->get_rq()), std::ref(ul->get_pq())}) {
       // this needs to be in this loop, we need to ensure that for cases where bandwidth doesn't divide nicely across upstreams,
       // we don't accidentally consume more bandwidth than expected
       champsim::bandwidth per_upper_tag_bw{std::min(per_upper_bandwidth, champsim::bandwidth::maximum_type{initiate_tag_bw.amount_remaining()})};
@@ -814,8 +814,8 @@ void CACHE::begin_phase()
   for (auto* ul : upper_levels) {
     channel_type::stats_type ul_new_roi_stats;
     channel_type::stats_type ul_new_sim_stats;
-    ul->roi_stats = ul_new_roi_stats;
-    ul->sim_stats = ul_new_sim_stats;
+    ul->get_roi_stats() = ul_new_roi_stats;
+    ul->get_sim_stats() = ul_new_sim_stats;
   }
 }
 
@@ -836,17 +836,17 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.pf_fill = sim_stats.pf_fill;
 
   for (auto* ul : upper_levels) {
-    ul->roi_stats.RQ_ACCESS = ul->sim_stats.RQ_ACCESS;
-    ul->roi_stats.RQ_FULL = ul->sim_stats.RQ_FULL;
-    ul->roi_stats.RQ_TO_CACHE = ul->sim_stats.RQ_TO_CACHE;
+    ul->get_roi_stats().RQ_ACCESS = ul->get_sim_stats().RQ_ACCESS;
+    ul->get_roi_stats().RQ_FULL = ul->get_sim_stats().RQ_FULL;
+    ul->get_roi_stats().RQ_TO_CACHE = ul->get_sim_stats().RQ_TO_CACHE;
 
-    ul->roi_stats.PQ_ACCESS = ul->sim_stats.PQ_ACCESS;
-    ul->roi_stats.PQ_FULL = ul->sim_stats.PQ_FULL;
-    ul->roi_stats.PQ_TO_CACHE = ul->sim_stats.PQ_TO_CACHE;
+    ul->get_roi_stats().PQ_ACCESS = ul->get_sim_stats().PQ_ACCESS;
+    ul->get_roi_stats().PQ_FULL = ul->get_sim_stats().PQ_FULL;
+    ul->get_roi_stats().PQ_TO_CACHE = ul->get_sim_stats().PQ_TO_CACHE;
 
-    ul->roi_stats.WQ_ACCESS = ul->sim_stats.WQ_ACCESS;
-    ul->roi_stats.WQ_FULL = ul->sim_stats.WQ_FULL;
-    ul->roi_stats.WQ_TO_CACHE = ul->sim_stats.WQ_TO_CACHE;
+    ul->get_roi_stats().WQ_ACCESS = ul->get_sim_stats().WQ_ACCESS;
+    ul->get_roi_stats().WQ_FULL = ul->get_sim_stats().WQ_FULL;
+    ul->get_roi_stats().WQ_TO_CACHE = ul->get_sim_stats().WQ_TO_CACHE;
   }
 }
 
@@ -883,11 +883,11 @@ void CACHE::print_deadlock()
   };
 
   for (auto* ul : upper_levels) {
-    champsim::range_print_deadlock(ul->RQ, NAME + "_RQ", q_writer, q_entry_pack);
-    champsim::range_print_deadlock(ul->WQ, NAME + "_WQ", q_writer, q_entry_pack);
-    champsim::range_print_deadlock(ul->PQ, NAME + "_PQ", q_writer, q_entry_pack);
+    champsim::range_print_deadlock(ul->get_rq(), NAME + "_RQ", q_writer, q_entry_pack);
+    champsim::range_print_deadlock(ul->get_wq(), NAME + "_WQ", q_writer, q_entry_pack);
+    champsim::range_print_deadlock(ul->get_pq(), NAME + "_PQ", q_writer, q_entry_pack);
   }
 }
 // LCOV_EXCL_STOP
 
-champsim::modules::cache_module::register_module<CACHE> default_cache_module("CACHE");
+champsim::modules::cache_module::register_module<CACHE> default_cache_module("DEFAULT_CACHE");

@@ -22,24 +22,14 @@ SCENARIO("A dram controller reports its size accurately")
     const std::size_t DRAM_CHANNEL_WIDTH = 8;
     const champsim::data::bytes expected_size{1ul << 33ul};
 
-    MEMORY_CONTROLLER uut{clock_period,
-                          clock_period * 2,
-                          trp_cycles,
-                          trcd_cycles,
-                          tcas_cycles,
-                          tras_cycles,
-                          champsim::chrono::microseconds{64000},
-                          {},
-                          64,
-                          64,
-                          DRAM_CHANNELS,
-                          champsim::data::bytes{DRAM_CHANNEL_WIDTH},
-                          DRAM_ROWS,
-                          DRAM_COLUMNS,
-                          DRAM_RANKS,
-                          DRAM_BANKGROUPS,
-                          DRAM_BANKS,
-                          8192};
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+                              .add_parameter("channels", DRAM_CHANNELS)
+                              .add_parameter("banks", DRAM_BANKS)
+                              .add_parameter("bankgroups", DRAM_BANKGROUPS)
+                              .add_parameter("ranks", DRAM_RANKS)
+                              .add_parameter("columns", DRAM_COLUMNS)
+                              .add_parameter("rows", DRAM_ROWS)
+                              .add_parameter("channel_width", champsim::data::bytes{DRAM_CHANNEL_WIDTH})};
     WHEN("The memory controller is queried for size")
     {
       champsim::data::bytes actual_size = uut.size();
@@ -62,24 +52,14 @@ SCENARIO("A dram controller reports its size accurately")
     const std::size_t DRAM_CHANNEL_WIDTH = 8;
     const champsim::data::gibibytes expected_size{1ul << 34ul};
 
-    MEMORY_CONTROLLER uut{clock_period,
-                          clock_period * 2,
-                          trp_cycles,
-                          trcd_cycles,
-                          tcas_cycles,
-                          tras_cycles,
-                          champsim::chrono::microseconds{64000},
-                          {},
-                          64,
-                          64,
-                          DRAM_CHANNELS,
-                          champsim::data::bytes{DRAM_CHANNEL_WIDTH},
-                          DRAM_ROWS,
-                          DRAM_COLUMNS,
-                          DRAM_RANKS,
-                          DRAM_BANKGROUPS,
-                          DRAM_BANKS,
-                          8192};
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+                              .add_parameter("channels", DRAM_CHANNELS)
+                              .add_parameter("banks", DRAM_BANKS)
+                              .add_parameter("bankgroups", DRAM_BANKGROUPS)
+                              .add_parameter("ranks", DRAM_RANKS)
+                              .add_parameter("columns", DRAM_COLUMNS)
+                              .add_parameter("rows", DRAM_ROWS)
+                              .add_parameter("channel_width", champsim::data::bytes{DRAM_CHANNEL_WIDTH})};
     WHEN("The memory controller is queried for size")
     {
       champsim::data::bytes actual_size = uut.size();
@@ -102,24 +82,14 @@ SCENARIO("A dram controller reports its size accurately")
     const std::size_t DRAM_CHANNEL_WIDTH = 8;
     const champsim::data::gibibytes expected_size{1ul << 35ul};
 
-    MEMORY_CONTROLLER uut{clock_period,
-                          clock_period * 2,
-                          trp_cycles,
-                          trcd_cycles,
-                          tcas_cycles,
-                          tras_cycles,
-                          champsim::chrono::microseconds{64000},
-                          {},
-                          64,
-                          64,
-                          DRAM_CHANNELS,
-                          champsim::data::bytes{DRAM_CHANNEL_WIDTH},
-                          DRAM_ROWS,
-                          DRAM_COLUMNS,
-                          DRAM_RANKS,
-                          DRAM_BANKGROUPS,
-                          DRAM_BANKS,
-                          8192};
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", nullptr, champsim::defaults::default_memory_controller()}
+                              .add_parameter("channels", DRAM_CHANNELS)
+                              .add_parameter("banks", DRAM_BANKS)
+                              .add_parameter("bankgroups", DRAM_BANKGROUPS)
+                              .add_parameter("ranks", DRAM_RANKS)
+                              .add_parameter("columns", DRAM_COLUMNS)
+                              .add_parameter("rows", DRAM_ROWS)
+                              .add_parameter("channel_width", champsim::data::bytes{DRAM_CHANNEL_WIDTH})};
     WHEN("The memory controller is asked for the size of memory")
     {
       champsim::data::bytes actual_size = uut.size();

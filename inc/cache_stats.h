@@ -29,4 +29,18 @@ struct cache_stats {
 
 cache_stats operator-(cache_stats lhs, cache_stats rhs);
 
+namespace champsim {
+struct cache_queue_stats {
+  uint64_t RQ_ACCESS = 0;
+  uint64_t RQ_FULL = 0;
+  uint64_t RQ_TO_CACHE = 0;
+  uint64_t PQ_ACCESS = 0;
+  uint64_t PQ_FULL = 0;
+  uint64_t PQ_TO_CACHE = 0;
+  uint64_t WQ_ACCESS = 0;
+  uint64_t WQ_FULL = 0;
+  uint64_t WQ_TO_CACHE = 0;
+};
+} // namespace champsim
+
 #endif

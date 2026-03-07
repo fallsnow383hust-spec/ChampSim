@@ -5,6 +5,7 @@
 #include "matchers.hpp"
 #include "util/bits.h"
 #include "vmem.h"
+#include "defaults.hpp"
 
 SCENARIO("The virtual memory issues references to blocks within a page if they are in the same level")
 {
@@ -13,25 +14,10 @@ SCENARIO("The virtual memory issues references to blocks within a page if they a
 
   GIVEN("A large virtual memory")
   {
-    MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                           champsim::chrono::picoseconds{6400},
-                           std::size_t{18},
-                           std::size_t{18},
-                           std::size_t{18},
-                           std::size_t{38},
-                           champsim::chrono::microseconds{64000},
-                           {},
-                           64,
-                           64,
-                           1,
-                           champsim::data::bytes{8},
-                           1024,
-                           1024,
-                           4,
-                           4,
-                           4,
-                           8192};
-    VirtualMemory uut{pte_page_size, 5, std::chrono::nanoseconds{6400}, dram};
+    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DRAM", nullptr, champsim::defaults::default_memory_controller()}};
+    VirtualMemory uut{champsim::modules::ModuleBuilder{"uut", "VMEM", nullptr, champsim::defaults::default_vmem()}
+        .add_parameter("page_table_page_size", pte_page_size)
+        .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
 
     champsim::data::bytes dist{1};
     for (std::size_t i = 0; i < level; ++i)

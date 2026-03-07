@@ -46,7 +46,7 @@ class PageTableWalker : public champsim::modules::page_table_walker_module
   };
 
   using pscl_type = champsim::msl::lru_table<pscl_entry, pscl_indexer, pscl_indexer>;
-  using channel_type = champsim::channel;
+  using channel_type = champsim::modules::channel_module;
   using request_type = typename channel_type::request_type;
   using response_type = typename channel_type::response_type;
 

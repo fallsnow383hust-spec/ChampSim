@@ -173,7 +173,7 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
   std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.roi_cache_stats), [](const champsim::modules::cache_module& cache) { return cache.get_roi_stats(); });
 
   champsim::modules::memory_controller_module& dram = env.dram_view();
-  for(auto chan_no = 0; chan_no < dram.get_num_channels(); ++chan_no) {
+  for(std::size_t chan_no = 0; chan_no < dram.get_num_channels(); ++chan_no) {
     stats.sim_dram_stats.push_back(dram.get_sim_stats(chan_no));
     stats.roi_dram_stats.push_back(dram.get_roi_stats(chan_no));
   }

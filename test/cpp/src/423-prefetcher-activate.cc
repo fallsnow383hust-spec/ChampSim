@@ -9,7 +9,7 @@
 
 namespace
 {
-std::map<CACHE*, std::vector<champsim::address>> address_operate_collector;
+std::map<champsim::modules::cache_module*, std::vector<champsim::address>> address_operate_collector;
 
 struct address_collector : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
@@ -25,7 +25,7 @@ struct address_collector : champsim::modules::prefetcher {
       return metadata_in;
     }
 
-    address_collector(std::string name, CACHE* cache, champsim::modules::ModuleBuilder builder) {}
+    address_collector(champsim::modules::ModuleBuilder builder) {}
   };
 
 }
@@ -36,12 +36,11 @@ SCENARIO("A prefetch does not trigger itself")
   GIVEN("A single cache")
   {
     do_nothing_MRC mock_ll;
-    CACHE uut{champsim::cache_builder{}
-      .name("423a-uut")
-      .sets(1)
-      .ways(1)
-      .lower_level(&mock_ll.queues)
-      .prefetcher("address_collector_2")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("num_sets", static_cast<uint32_t>(1))
+      .add_parameter("num_ways", static_cast<uint32_t>(1))
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"address_collector_2"})
     };
 
     std::array<champsim::operable*, 2> elements{{&mock_ll, &uut}};
@@ -82,12 +81,11 @@ SCENARIO("The prefetcher is triggered if the packet matches the activate field")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("423b-uut")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .prefetch_activate(type)
-      .prefetcher("address_collector_2")
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("pref_activate_mask", std::vector<access_type>{type})
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"address_collector_2"})
     };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
@@ -138,13 +136,12 @@ SCENARIO("The prefetcher is not triggered if the packet does not match the activ
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
 
-    auto builder = champsim::cache_builder{champsim::defaults::default_l1d}
-      .name("423c-uut")
-      .upper_levels({&mock_ul.queues})
-      .lower_level(&mock_ll.queues)
-      .prefetcher("address_collector_2");
+    auto builder = champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("prefetcher_modules", std::vector<std::string>{"address_collector_2"});
 
-    builder = std::apply([&](auto... types) { return builder.prefetch_activate(types...); }, mask);
+    builder = std::apply([&](auto... types) { return builder.add_parameter("pref_activate_mask", std::vector<access_type>{types...}); }, mask);
 
     CACHE uut{builder};
 

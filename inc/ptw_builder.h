@@ -31,6 +31,7 @@ class PageTableWalker;
 namespace champsim
 {
 class channel;
+namespace modules { struct channel_module; }
 class ptw_builder
 {
   std::string_view m_name{};
@@ -43,8 +44,8 @@ class ptw_builder
   std::optional<champsim::bandwidth::maximum_type> m_max_fill{};
   double m_bandwidth_factor{1};
   unsigned m_latency{};
-  std::vector<champsim::channel*> m_uls{};
-  champsim::channel* m_ll{};
+  std::vector<champsim::modules::channel_module*> m_uls{};
+  champsim::modules::channel_module* m_ll{};
   VirtualMemory* m_vmem{};
 
   friend class ::PageTableWalker;
@@ -62,8 +63,8 @@ public:
   ptw_builder& fill_bandwidth(champsim::bandwidth::maximum_type max_fill_);
   ptw_builder& bandwidth_factor(double bandwidth_factor_);
   ptw_builder& latency(unsigned latency_);
-  ptw_builder& upper_levels(std::vector<champsim::channel*>&& uls_);
-  ptw_builder& lower_level(champsim::channel* ll_);
+  ptw_builder& upper_levels(std::vector<champsim::modules::channel_module*>&& uls_);
+  ptw_builder& lower_level(champsim::modules::channel_module* ll_);
   ptw_builder& virtual_memory(VirtualMemory* vmem_);
 };
 } // namespace champsim

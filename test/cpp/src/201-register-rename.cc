@@ -4,6 +4,7 @@
 #include "mocks.hpp"
 #include "ooo_cpu.h"
 #include "register_allocator.h"
+#include "defaults.hpp"
 
 SCENARIO("The register allocation logic correctly reassigns physical register names.")
 {
@@ -169,11 +170,11 @@ SCENARIO("The register allocator correctly recycles physical registers when no l
     constexpr unsigned schedule_latency = 1;
 
     do_nothing_MRC mock_L1I, mock_L1D;
-    O3_CPU uut{champsim::core_builder{}
-                   .schedule_width(champsim::bandwidth::maximum_type{schedule_width})
-                   .schedule_latency(schedule_latency)
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"uut_core", "CPU", nullptr, champsim::defaults::default_core()}
+                   .add_parameter("schedule_width", champsim::bandwidth::maximum_type{schedule_width})
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     uut.ROB.push_back(champsim::test::instruction_with_ip(1));
     for (auto& instr : uut.ROB)

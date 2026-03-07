@@ -9,11 +9,10 @@ struct merge_testbed {
   champsim::address address_that_will_hit{0xcafebabe};
   filter_MRC mock_ll{address_that_will_hit};
   to_rq_MRP seed_ul, test_ul;
-  CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                .name("431-uut")
-                .upper_levels({{&seed_ul.queues, &test_ul.queues}})
-                .lower_level(&mock_ll.queues)
-                .hit_latency(hit_latency)};
+  CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+                .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&seed_ul.queues, &test_ul.queues})
+                .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))};
   uint32_t pkt_id = 0;
 
   std::array<champsim::operable*, 4> elements{{&mock_ll, &uut, &seed_ul, &test_ul}};
@@ -117,7 +116,7 @@ SCENARIO("A prefetch MSHR that gets hit is promoted")
         champsim::channel::response_type response{testbed.uut.MSHR.front().address, testbed.uut.MSHR.front().v_address,
                                                   testbed.uut.MSHR.front().data_promise->data, 0, testbed.uut.MSHR.front().instr_depend_on_me};
 
-        testbed.uut.lower_level->returned.push_back(response);
+        testbed.uut.lower_level->get_returned().push_back(response);
         for (uint64_t i = 0; i < 8 * (testbed.hit_latency); ++i)
           for (auto elem : testbed.elements)
             elem->_operate();

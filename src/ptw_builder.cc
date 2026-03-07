@@ -79,13 +79,13 @@ auto champsim::ptw_builder::latency(unsigned latency_) -> ptw_builder&
   return *this;
 }
 
-auto champsim::ptw_builder::upper_levels(std::vector<champsim::channel*>&& uls_) -> ptw_builder&
+auto champsim::ptw_builder::upper_levels(std::vector<champsim::modules::channel_module*>&& uls_) -> ptw_builder&
 {
   m_uls = std::move(uls_);
   return *this;
 }
 
-auto champsim::ptw_builder::lower_level(champsim::channel* ll_) -> ptw_builder&
+auto champsim::ptw_builder::lower_level(champsim::modules::channel_module* ll_) -> ptw_builder&
 {
   m_ll = ll_;
   return *this;

@@ -18,6 +18,7 @@
 #define MODULES_H
 
 #include <map>
+#include <deque>
 #include <vector>
 #include <memory>
 #include <functional>
@@ -47,49 +48,50 @@ namespace champsim::modules {
 struct ModuleBuilder {
   private:
   std::map<std::string,std::any> parameters;
+  std::string module_name = "";
   std::string model = "";
-  std::string name = "";
   std::any parent = nullptr;
 
   public:
   template<typename T>
   T get_parameter(std::string name, bool optional = false, T default_value = T{}) {
-    if(parameters.find(name) == parameters.end()) {
+    if(auto it = parameters.find(name); it != parameters.end()) {
+      try {
+        return std::any_cast<T>(it->second);
+      }
+      catch(const std::bad_any_cast& caught) {
+        fmt::print("[MODULE] [{}] ERROR: Casting failed while retrieving parameter {}, is your parameter type correct?\n",module_name,name);
+        exit(-1);
+      }
+    } else {
       if(optional) {
         return default_value;
       }
-      fmt::print("[MODULE] ERROR: parameter {} not found for module construction\n",name);
-      exit(-1);
-    }
-    try {
-      return std::any_cast<T>(parameters[name]);
-    }
-    catch(const std::bad_any_cast& caught) {
-      fmt::print("[MODULE] ERROR: Casting failed while retrieving parameter {}, is your parameter type correct?\n",name);
+      fmt::print("[MODULE] [{}] ERROR: parameter {} not found for module construction\n",module_name,name);
       exit(-1);
     }
   }
 
   template<typename T>
   ModuleBuilder& add_parameter(std::string name, T value) {
-    if(parameters.find(name) != parameters.end()) {
-      fmt::print("[MODULE] ERROR: duplicate parameter name used: {}\n",name);
-      exit(-1);
-    }
+    //if(parameters.find(name) != parameters.end()) {
+    //  fmt::print("[MODULE] ERROR: duplicate parameter name used: {}\n",name);
+    //  exit(-1);
+    //} // should we allow this? it would allow for parameters to be set by defaults and then overridden, but it would also allow for accidental overwriting of parameters which could be bad
     parameters[name] = value;
     return *this;
   }
 
   std::string get_model() const { return model; }
-  std::string get_name() const { return name; }
+  std::string get_name() const { return module_name; }
 
   template<typename T>
   T* get_parent() const { return std::any_cast<T*>(parent); }
 
-  bool is_valid() const {return model != "" && name != "" && std::any_cast<void*>(parent) != nullptr;}
+  bool is_valid() const {return model != "" && module_name != "" && parent.has_value() && parent.type() != typeid(std::nullptr_t);}
 
   ModuleBuilder() {}
-  ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : name(name_), model(model_), parent(parent_) {
+  ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : module_name(name_), model(model_), parent(parent_) {
     if(!defaults.parameters.empty()) {
       for(auto& [param_name, param_value] : defaults.parameters) {
         parameters[param_name] = param_value;
@@ -106,15 +108,21 @@ struct module_base {
     using function_type = typename std::function<std::unique_ptr<B>(ModuleBuilder builder)>;
 
     private:
-    static std::map<std::string,std::any> module_map;
-    static std::map<std::string,std::vector<std::unique_ptr<B>>> instance_map;
+    static std::map<std::string,std::any>& module_map() {
+        static std::map<std::string,std::any> map;
+        return map;
+    }
+    static std::map<std::string,std::vector<std::unique_ptr<B>>>& instance_map() {
+        static std::map<std::string,std::vector<std::unique_ptr<B>>> map;
+        return map;
+    }
 
     static void add_module(std::string name, std::function<std::unique_ptr<B>(ModuleBuilder builder)> module_constructor) {
-        if(module_map.find(name) != module_map.end()) {
+        if(module_map().find(name) != module_map().end()) {
             fmt::print("[MODULE] ERROR: duplicate module name used: {}\n", name);
             exit(-1);
         }
-        module_map[name] = module_constructor;
+        module_map()[name] = module_constructor;
     }
 
     public:
@@ -128,12 +136,12 @@ struct module_base {
             fmt::print("[MODULE] ERROR: invalid module builder used for module {}\n",builder.get_name());
             exit(-1);
         }
-        if(module_map.find(builder.get_model()) == module_map.end()) {
+        if(module_map().find(builder.get_model()) == module_map().end()) {
             fmt::print("[MODULE] ERROR: specified module {} does not exist\n",builder.get_model());
             exit(-1);
         }
         try {
-          B* instance_ptr = instance_map[builder.get_name()].emplace_back(std::any_cast<std::function<std::unique_ptr<B>(ModuleBuilder builder)>>(module_map[builder.get_model()])(builder)).get();
+          B* instance_ptr = instance_map()[builder.get_name()].emplace_back(std::any_cast<std::function<std::unique_ptr<B>(ModuleBuilder builder)>>(module_map()[builder.get_model()])(builder)).get();
           //It seems sketchy for the module wrapper to be tracking these separately from the module itself, can we fix this?
           instance_ptr->NAME =  builder.get_name();
           instance_ptr->bind(builder.get_parent<C>());
@@ -147,12 +155,12 @@ struct module_base {
 
     template<typename T>
     static T* get_instance(std::string name) {
-        if(instance_map.find(name) == instance_map.end() || instance_map[name].empty()) {
+        if(instance_map().find(name) == instance_map().end() || instance_map()[name].empty()) {
             fmt::print("[MODULE] ERROR: no instances found for module {}\n",name);
             exit(-1);
         }
         try {
-          return std::any_cast<T*>(instance_map[name].front().get());
+          return std::any_cast<T*>(instance_map()[name].front().get());
         }
         catch(const std::bad_any_cast& caught) {
           fmt::print("[MODULE] ERROR: Casting failed while retrieving {}, is your instance type correct?\n",name);
@@ -181,7 +189,7 @@ struct module_base {
     virtual uint8_t get_cpu_num() const = 0;
     virtual uint64_t sim_cycle() const = 0;
 
-    core_module(champsim::chrono::picoseconds clock_period) : operable(clock_period) {}
+    core_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
 
     using stats_type = cpu_stats;
     virtual stats_type get_sim_stats() const = 0;
@@ -192,7 +200,7 @@ struct module_base {
 
   struct cache_module: public module_base<cache_module,environment>, public operable {
     //interface for cache module
-    cache_module(champsim::chrono::picoseconds clock_period) : operable(clock_period) {}
+    cache_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
 
     using stats_type = cache_stats;
     virtual champsim::bandwidth::maximum_type get_max_tag_bandwidth() const = 0;
@@ -227,24 +235,30 @@ struct module_base {
 
   struct memory_controller_module: public module_base<memory_controller_module,environment>, public operable {
     //interface for memory controller module
-    memory_controller_module(champsim::chrono::picoseconds clock_period) : operable(clock_period) {}
+    memory_controller_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
 
     using stats_type = dram_stats;
     virtual std::size_t get_num_channels() const = 0;
     virtual stats_type get_sim_stats(std::size_t channel_no) const = 0;
     virtual stats_type get_roi_stats(std::size_t channel_no) const = 0;
+
+    virtual champsim::data::bytes size() const = 0;
   }; 
 
   struct page_table_walker_module: public module_base<page_table_walker_module,environment>, public operable {
     //interface for page table walker module
-    page_table_walker_module(champsim::chrono::picoseconds clock_period) : operable(clock_period) {}
+    page_table_walker_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
   }; 
 
   struct channel_module: public module_base<channel_module,environment> {
     //interface for channel module
-    virtual bool add_rq(const request& packet) = 0;
-    virtual bool add_wq(const request& packet) = 0;
-    virtual bool add_pq(const request& packet) = 0;
+    using request_type = champsim::request;
+    using response_type = champsim::response;
+    using stats_type = champsim::cache_queue_stats;
+
+    virtual bool add_rq(const request_type& packet) = 0;
+    virtual bool add_wq(const request_type& packet) = 0;
+    virtual bool add_pq(const request_type& packet) = 0;
 
     virtual std::size_t rq_occupancy() const = 0;
     virtual std::size_t wq_occupancy() const = 0;
@@ -253,6 +267,18 @@ struct module_base {
     virtual std::size_t rq_size() const = 0;
     virtual std::size_t wq_size() const = 0;
     virtual std::size_t pq_size() const = 0;
+
+    // Queue accessors for upper-level iteration
+    virtual std::deque<request_type>& get_rq() = 0;
+    virtual std::deque<request_type>& get_wq() = 0;
+    virtual std::deque<request_type>& get_pq() = 0;
+    virtual std::deque<response_type>& get_returned() = 0;
+
+    // Stats accessors
+    virtual stats_type& get_sim_stats() = 0;
+    virtual stats_type& get_roi_stats() = 0;
+
+    virtual ~channel_module() = default;
   }; 
 
   struct vmem_module: public module_base<vmem_module,environment> {
@@ -413,10 +439,6 @@ struct module_base {
     virtual std::pair<uint64_t, bool> btb_prediction([[maybe_unused]] uint64_t ip) {return std::pair<uint64_t, bool>{};}
   };
 
-  template<typename B, typename C>
-  std::map<std::string,std::any> module_base<B,C>::module_map;
-  template<typename B, typename C>
-  std::map<std::string,std::vector<std::unique_ptr<B>>> module_base<B,C>::instance_map;
 }
 
 

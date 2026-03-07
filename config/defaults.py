@@ -18,12 +18,12 @@ from . import util
 
 def cache_core_defaults(cpu):
     ''' Generate the lower levels that a default core would expect for each of its caches '''
-    yield { 'model': "CACHE", 'name': cpu.get('L1I'), 'lower_level': cpu.get('L2C') }
-    yield { 'model': "CACHE", 'name': cpu.get('L1D'), 'lower_level': cpu.get('L2C') }
-    yield { 'model': "CACHE", 'name': cpu.get('ITLB'), 'lower_level': cpu.get('STLB') }
-    yield { 'model': "CACHE", 'name': cpu.get('DTLB'), 'lower_level': cpu.get('STLB') }
-    yield { 'model': "CACHE", 'name': cpu.get('L2C'), 'lower_level': 'LLC' }
-    yield { 'model': "CACHE", 'name': cpu.get('STLB'), 'lower_level': cpu.get('PTW') }
+    yield { 'model': "DEFAULT_CACHE", 'name': cpu.get('L1I'), 'lower_level': cpu.get('L2C') }
+    yield { 'model': "DEFAULT_CACHE", 'name': cpu.get('L1D'), 'lower_level': cpu.get('L2C') }
+    yield { 'model': "DEFAULT_CACHE", 'name': cpu.get('ITLB'), 'lower_level': cpu.get('STLB') }
+    yield { 'model': "DEFAULT_CACHE", 'name': cpu.get('DTLB'), 'lower_level': cpu.get('STLB') }
+    yield { 'model': "DEFAULT_CACHE", 'name': cpu.get('L2C'), 'lower_level': 'LLC' }
+    yield { 'model': "DEFAULT_CACHE", 'name': cpu.get('STLB'), 'lower_level': cpu.get('PTW') }
 
 def ptw_core_defaults(cpu):
     ''' Generate the lower levels that a default core would expect for each of its PTWs '''
@@ -41,25 +41,25 @@ def list_defaults_for_core(cpu, caches):
 
     l1i_members = (
         { '_first_level': True, '_is_instruction_cache': True,
-         '_defaults': 'champsim::defaults::default_l1i', '_queue_factor': 32 },
-        { '_defaults': 'champsim::defaults::default_l2c', '_queue_factor': 16 },
-        { '_defaults': 'champsim::defaults::default_llc', '_queue_factor': 32 }
+         '_defaults': 'champsim::defaults::default_l1i()', '_queue_factor': 32 },
+        { '_defaults': 'champsim::defaults::default_l2c()', '_queue_factor': 16 },
+        { '_defaults': 'champsim::defaults::default_llc()', '_queue_factor': 32 }
     )
 
     l1d_members = (
-        { '_first_level': True, '_defaults': 'champsim::defaults::default_l1d', '_queue_factor': 32 },
-        { '_defaults': 'champsim::defaults::default_l2c', '_queue_factor': 16 },
-        { '_defaults': 'champsim::defaults::default_llc', '_queue_factor': 32 }
+        { '_first_level': True, '_defaults': 'champsim::defaults::default_l1d()', '_queue_factor': 32 },
+        { '_defaults': 'champsim::defaults::default_l2c()', '_queue_factor': 16 },
+        { '_defaults': 'champsim::defaults::default_llc()', '_queue_factor': 32 }
     )
 
     itlb_members = (
-        { '_first_level': True, '_defaults': 'champsim::defaults::default_itlb', '_queue_factor': 16 },
-        { '_defaults': 'champsim::defaults::default_stlb', '_queue_factor': 16 }
+        { '_first_level': True, '_defaults': 'champsim::defaults::default_itlb()', '_queue_factor': 16 },
+        { '_defaults': 'champsim::defaults::default_stlb()', '_queue_factor': 16 }
     )
 
     dtlb_members = (
-        { '_first_level': True, '_defaults': 'champsim::defaults::default_dtlb', '_queue_factor': 16 },
-        { '_defaults': 'champsim::defaults::default_stlb', '_queue_factor': 16 }
+        { '_first_level': True, '_defaults': 'champsim::defaults::default_dtlb()', '_queue_factor': 16 },
+        { '_defaults': 'champsim::defaults::default_stlb()', '_queue_factor': 16 }
     )
 
     def connect_translator(cache, tlb):

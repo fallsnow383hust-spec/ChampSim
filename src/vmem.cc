@@ -26,7 +26,7 @@
 using namespace champsim::data::data_literals;
 
 VirtualMemory::VirtualMemory(champsim::modules::ModuleBuilder builder)
-    : randomization_seed(builder.get_parameter<std::optional<uint64_t>>("randomization_seed", true)), dram(*builder.get_parameter<MEMORY_CONTROLLER*>("dram")), minor_fault_penalty(builder.get_parameter<champsim::chrono::clock::duration>("minor_fault_penalty")), pt_levels(builder.get_parameter<std::size_t>("page_table_levels")), pte_page_size(builder.get_parameter<champsim::data::bytes>("page_table_page_size")),
+    : randomization_seed(builder.get_parameter<std::optional<uint64_t>>("randomization_seed", true)), dram(builder.get_parameter<champsim::modules::memory_controller_module*>("dram")), minor_fault_penalty(builder.get_parameter<champsim::chrono::clock::duration>("minor_fault_penalty")), pt_levels(builder.get_parameter<std::size_t>("page_table_levels")), pte_page_size(builder.get_parameter<champsim::data::bytes>("page_table_page_size")),
       next_pte_page(
           champsim::dynamic_extent{champsim::data::bits{LOG2_PAGE_SIZE}, champsim::data::bits{champsim::lg2(champsim::data::bytes{pte_page_size}.count())}}, 0)
 {
@@ -39,7 +39,7 @@ VirtualMemory::VirtualMemory(champsim::modules::ModuleBuilder builder)
   if (required_bits > champsim::address::bits) {
     fmt::print("[VMEM] WARNING: virtual memory configuration would require {} bits of addressing.\n", required_bits); // LCOV_EXCL_LINE
   }
-  if (required_bits > champsim::data::bits{champsim::lg2(dram.size().count())}) {
+  if (required_bits > champsim::data::bits{champsim::lg2(dram->size().count())}) {
     fmt::print("[VMEM] WARNING: physical memory size is smaller than virtual memory size.\n"); // LCOV_EXCL_LINE
   }
   populate_pages();
@@ -48,8 +48,8 @@ VirtualMemory::VirtualMemory(champsim::modules::ModuleBuilder builder)
 
 void VirtualMemory::populate_pages()
 {
-  assert(dram.size() > 1_MiB);
-  ppage_free_list.resize(((dram.size() - 1_MiB) / PAGE_SIZE).count());
+  assert(dram->size() > 1_MiB);
+  ppage_free_list.resize(((dram->size() - 1_MiB) / PAGE_SIZE).count());
   assert(ppage_free_list.size() != 0);
   champsim::page_number base_address =
       champsim::page_number{champsim::lowest_address_for_size(std::max<champsim::data::mebibytes>(champsim::data::bytes{PAGE_SIZE}, 1_MiB))};
@@ -146,4 +146,4 @@ std::pair<champsim::address, champsim::chrono::clock::duration> VirtualMemory::g
   return {paddr, penalty};
 }
 
-champsim::modules::vmem_module::register_module<VirtualMemory> default_virtual_memory_module("VMEM");
+champsim::modules::vmem_module::register_module<VirtualMemory> default_virtual_memory_module("DEFAULT_VMEM");
