@@ -27,7 +27,6 @@
 #include "bandwidth.h"
 #include "channel.h"
 #include "operable.h"
-#include "ptw_builder.h"
 #include "msl/lru_table.h"
 #include "waitable.h"
 

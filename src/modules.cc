@@ -18,6 +18,9 @@
 
 #include "cache.h"
 
+// Static member definitions
+std::string champsim::modules::ModuleBuilder::dump_log_;
+
 namespace champsim::modules {
 
   bool prefetcher::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const

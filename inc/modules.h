@@ -37,14 +37,15 @@
 #include "dram_stats.h"
 #include "bandwidth.h"
 #include <any>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include "util/type_traits.h"
 
 //class CACHE;
 //class O3_CPU;
-namespace champsim {
-  class environment;
-};
 namespace champsim::modules {
+
+struct environment_module;
 
 struct ModuleBuilder {
   private:
@@ -52,18 +53,48 @@ struct ModuleBuilder {
   std::string module_name = "";
   std::string model = "";
   std::any parent = nullptr;
+  bool dump_ = false;
+  static std::string dump_log_;
 
   public:
+  ModuleBuilder& enable_dump() { dump_ = true; return *this; }
+  bool get_dump() const { return dump_; }
+  static const std::string& get_dump_log() { return dump_log_; }
+  static void clear_dump_log() { dump_log_.clear(); }
+
+  template<typename T>
+  std::string dump_line(const std::string& mod, const std::string& name, const T& val, const char* tag) {
+    if constexpr (fmt::is_formattable<T>::value) {
+      try { return fmt::format("  [{}] {} = {} ({})\n", mod, name, val, tag); }
+      catch (...) {}
+    } else if constexpr (std::is_pointer_v<T>) {
+      try { return fmt::format("  [{}] {} = {} ({})\n", mod, name, std::vector<T>{val}, tag); }
+      catch (...) {}
+    }
+    return fmt::format("  [{}] {} = <unprintable> ({})\n", mod, name, tag);
+  }
+
   template<typename T>
   T get_parameter(std::string name, bool optional = false, T default_value = T{}) {
     if(auto it = parameters.find(name); it != parameters.end()) {
       try {
-        return std::any_cast<T>(it->second);
+        auto val = std::any_cast<T>(it->second);
+        if (dump_) {
+          auto line = dump_line(module_name, name, val, "set");
+          dump_log_ += line;
+          fmt::print("{}", line);
+        }
+        return val;
       }
       catch(const std::bad_any_cast&) {
         // For arithmetic types, try converting from whatever numeric type was stored
         T result{};
         if (champsim::numeric_any_cast(it->second, result)) {
+          if (dump_) {
+            auto line = dump_line(module_name, name, result, "set");
+            dump_log_ += line;
+            fmt::print("{}", line);
+          }
           return result;
         }
         fmt::print("[MODULE] [{}] ERROR: Casting failed while retrieving parameter {}, is your parameter type correct?\n",module_name,name);
@@ -71,6 +102,11 @@ struct ModuleBuilder {
       }
     } else {
       if(optional) {
+        if (dump_) {
+          auto line = dump_line(module_name, name, default_value, "default");
+          dump_log_ += line;
+          fmt::print("{}", line);
+        }
         return default_value;
       }
       fmt::print("[MODULE] [{}] ERROR: parameter {} not found\n",module_name,name);
@@ -94,10 +130,23 @@ struct ModuleBuilder {
   template<typename T>
   T* get_parent() const { return std::any_cast<T*>(parent); }
 
+  // Type for storing per-model parameter maps (model_name -> (param_name -> value))
+  using nested_params_type = std::map<std::string, std::map<std::string, std::any>>;
+
   bool is_valid() const {return model != "" && module_name != "" && parent.has_value() && parent.type() != typeid(std::nullptr_t);}
 
+  // Populate this builder with parameters from a nested_params_type map, if the model has an entry
+  ModuleBuilder& apply_nested_params(const nested_params_type& params_map) {
+    if (auto it = params_map.find(model); it != params_map.end()) {
+      for (auto& [k, v] : it->second) {
+        parameters[k] = v;
+      }
+    }
+    return *this;
+  }
+
   ModuleBuilder() {}
-  ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : module_name(name_), model(model_), parent(parent_) {
+  ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : module_name(name_), model(model_), parent(parent_), dump_(defaults.dump_) {
     if(!defaults.parameters.empty()) {
       for(auto& [param_name, param_value] : defaults.parameters) {
         parameters[param_name] = param_value;
@@ -187,7 +236,7 @@ struct module_base {
 
 };
 
-  struct core_module: public module_base<core_module,environment>, public operable {
+  struct core_module: public module_base<core_module,environment_module>, public operable {
     //interface for core module
     virtual void push_instruction(ooo_model_instr instr) = 0;
     virtual std::size_t instructions_requested() = 0;
@@ -204,7 +253,7 @@ struct module_base {
     virtual void quiet(bool enable) = 0;
   };
 
-  struct cache_module: public module_base<cache_module,environment>, public operable {
+  struct cache_module: public module_base<cache_module,environment_module>, public operable {
     //interface for cache module
     cache_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
 
@@ -240,7 +289,7 @@ struct module_base {
     virtual std::size_t num_ways() const = 0;
   };
 
-  struct memory_controller_module: public module_base<memory_controller_module,environment>, public operable {
+  struct memory_controller_module: public module_base<memory_controller_module,environment_module>, public operable {
     //interface for memory controller module
     memory_controller_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
 
@@ -252,12 +301,12 @@ struct module_base {
     virtual champsim::data::bytes size() const = 0;
   }; 
 
-  struct page_table_walker_module: public module_base<page_table_walker_module,environment>, public operable {
+  struct page_table_walker_module: public module_base<page_table_walker_module,environment_module>, public operable {
     //interface for page table walker module
     page_table_walker_module(champsim::chrono::picoseconds clock_period_) : operable(clock_period_) {}
   }; 
 
-  struct channel_module: public module_base<channel_module,environment> {
+  struct channel_module: public module_base<channel_module,environment_module> {
     //interface for channel module
     using request_type = champsim::request;
     using response_type = champsim::response;
@@ -288,7 +337,7 @@ struct module_base {
     virtual ~channel_module() = default;
   }; 
 
-  struct vmem_module: public module_base<vmem_module,environment> {
+  struct vmem_module: public module_base<vmem_module,environment_module> {
     virtual std::size_t available_ppages() const = 0;
     virtual std::pair<champsim::page_number, champsim::chrono::clock::duration> va_to_pa(uint32_t cpu_num, champsim::page_number vaddr) = 0;
     virtual std::pair<champsim::address, champsim::chrono::clock::duration> get_pte_pa(uint32_t cpu_num, champsim::page_number vaddr, std::size_t level) = 0;
@@ -449,10 +498,65 @@ struct module_base {
     virtual std::pair<uint64_t, bool> btb_prediction([[maybe_unused]] uint64_t ip) {return std::pair<uint64_t, bool>{};}
   };
 
+  // Environment module interface - the top-level module that owns/constructs the entire simulation
+  struct environment_module : public module_base<environment_module, environment_module> {
+    virtual std::vector<std::reference_wrapper<core_module>> cpu_view() = 0;
+    virtual std::vector<std::reference_wrapper<cache_module>> cache_view() = 0;
+    virtual std::vector<std::reference_wrapper<page_table_walker_module>> ptw_view() = 0;
+    virtual memory_controller_module& dram_view() = 0;
+    virtual std::vector<std::reference_wrapper<champsim::operable>> operable_view() = 0;
+
+    virtual std::size_t get_num_cpus() const { return 0; }
+    virtual unsigned get_block_size() const { return 64; }
+    virtual unsigned get_page_size() const { return 4096; }
+
+    virtual ~environment_module() = default;
+  };
+
 }
 
+template <>
+struct fmt::formatter<champsim::modules::ModuleBuilder::nested_params_type> : fmt::formatter<std::string> {
+  auto format(const champsim::modules::ModuleBuilder::nested_params_type& map, fmt::format_context& ctx) const {
+    std::string result = "{";
+    bool first_outer = true;
+    for (auto& [model, params] : map) {
+      if (!first_outer) result += ", ";
+      first_outer = false;
+      result += model + ": {";
+      bool first_inner = true;
+      for (auto& [k, v] : params) {
+        if (!first_inner) result += ", ";
+        first_inner = false;
+        result += k + "=";
+        if (v.type() == typeid(int64_t)) result += std::to_string(std::any_cast<int64_t>(v));
+        else if (v.type() == typeid(uint64_t)) result += std::to_string(std::any_cast<uint64_t>(v));
+        else if (v.type() == typeid(double)) result += std::to_string(std::any_cast<double>(v));
+        else if (v.type() == typeid(bool)) result += std::any_cast<bool>(v) ? "true" : "false";
+        else if (v.type() == typeid(std::string)) result += std::any_cast<std::string>(v);
+        else result += "<any>";
+      }
+      result += "}";
+    }
+    result += "}";
+    return fmt::formatter<std::string>::format(result, ctx);
+  }
+};
 
-
+// Formatter for vector of pointers to types with a NAME member
+template <typename T>
+struct fmt::formatter<std::vector<T*>, std::enable_if_t<std::is_convertible_v<decltype(std::declval<T>().NAME), std::string>, char>>
+    : fmt::formatter<std::string> {
+  auto format(const std::vector<T*>& vec, fmt::format_context& ctx) const {
+    std::string result = "[";
+    for (std::size_t i = 0; i < vec.size(); i++) {
+      if (i > 0) result += ", ";
+      result += vec[i] ? ("@" + vec[i]->NAME) : "(null)";
+    }
+    result += "]";
+    return fmt::formatter<std::string>::format(result, ctx);
+  }
+};
 
 
 #endif

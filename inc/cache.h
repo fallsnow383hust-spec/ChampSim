@@ -37,7 +37,6 @@
 #include "address.h"
 #include "bandwidth.h"
 #include "block.h"
-#include "cache_builder.h"
 #include "cache_stats.h"
 #include "champsim.h"
 #include "channel.h"
@@ -268,11 +267,17 @@ public:
       fmt::print("[{}] WARNING: No replacement modules specified, using lru\n",NAME);
       builder.get_parameter<std::vector<std::string>>("replacement_modules").push_back("lru");
     }
+    auto pref_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("prefetcher_params", true);
+    auto repl_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("replacement_params", true);
     for(auto s : builder.get_parameter<std::vector<std::string>>("prefetcher_modules")) {
-      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)}));
+      auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)};
+      nested.apply_nested_params(pref_params);
+      pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(nested));
     }
     for(auto s : builder.get_parameter<std::vector<std::string>>("replacement_modules")) {
-      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)}));
+      auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)};
+      nested.apply_nested_params(repl_params);
+      repl_module_pimpl.push_back(champsim::modules::replacement::create_instance(nested));
     }
   }
 

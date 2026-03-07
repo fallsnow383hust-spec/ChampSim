@@ -13,7 +13,8 @@ SCENARIO("The page table steps have correct offsets") {
     constexpr std::size_t levels = 5;
     MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DEFAULT_MEMORY_CONTROLLER", nullptr, champsim::defaults::default_memory_controller()}};
     VirtualMemory vmem{champsim::modules::ModuleBuilder{"vmem", "DEFAULT_VMEM", nullptr, champsim::defaults::default_vmem()}
-        .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
+        .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))
+        .add_parameter("page_table_levels", levels)};
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
     PageTableWalker uut{champsim::modules::ModuleBuilder{"uut_ptw", "DEFAULT_PTW", nullptr, champsim::defaults::default_ptw()}

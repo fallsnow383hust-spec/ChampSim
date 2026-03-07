@@ -18,7 +18,7 @@ uint32_t ip_stride::prefetcher_cache_operate(champsim::address addr, champsim::a
     // Initialize prefetch state unless we somehow saw the same address twice in
     // a row or if this is the first time we've seen this stride
     if (stride != 0 && stride == found->last_stride)
-      active_lookahead = {champsim::address{cl_addr}, stride, PREFETCH_DEGREE};
+      active_lookahead = {champsim::address{cl_addr}, stride, prefetch_degree};
   }
 
   // update tracking set

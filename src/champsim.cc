@@ -23,7 +23,7 @@
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 
-#include "environment.h"
+#include "modules.h"
 #include "event_listeners.h"
 #include "ooo_cpu.h"
 #include "operable.h"
@@ -38,7 +38,7 @@ std::chrono::seconds elapsed_time() { return std::chrono::duration_cast<std::chr
 
 namespace champsim
 {
-long do_cycle(environment& env, std::vector<tracereader>& traces, std::vector<std::size_t> trace_index, champsim::chrono::clock& global_clock)
+long do_cycle(modules::environment_module& env, std::vector<tracereader>& traces, std::vector<std::size_t> trace_index, champsim::chrono::clock& global_clock)
 {
   auto operables = env.operable_view();
   std::sort(std::begin(operables), std::end(operables),
@@ -61,7 +61,7 @@ long do_cycle(environment& env, std::vector<tracereader>& traces, std::vector<st
   return progress;
 }
 
-phase_stats do_phase(const phase_info& phase, environment& env, std::vector<tracereader>& traces, champsim::chrono::clock& global_clock)
+phase_stats do_phase(const phase_info& phase, modules::environment_module& env, std::vector<tracereader>& traces, champsim::chrono::clock& global_clock)
 {
   auto operables = env.operable_view();
   auto [phase_name, is_warmup, length, trace_index, trace_names] = phase;
@@ -182,7 +182,7 @@ phase_stats do_phase(const phase_info& phase, environment& env, std::vector<trac
 }
 
 // simulation entry point
-std::vector<phase_stats> main(environment& env, std::vector<phase_info>& phases, std::vector<tracereader>& traces)
+std::vector<phase_stats> main(modules::environment_module& env, std::vector<phase_info>& phases, std::vector<tracereader>& traces)
 {
   for (champsim::operable& op : env.operable_view()) {
     op.initialize();

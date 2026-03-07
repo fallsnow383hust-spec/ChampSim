@@ -36,7 +36,6 @@
 #include "bandwidth.h"
 #include "champsim.h"
 #include "channel.h"
-#include "core_builder.h"
 #include "core_stats.h"
 #include "instruction.h"
 #include "modules.h"
@@ -228,10 +227,18 @@ public:
       fmt::print("[CPU {}] WARNING: No btb modules specified, using basic_btb\n",cpu);
       builder.add_parameter<std::vector<std::string>>("btb_impls", {"basic_btb"});
     }
-    for(auto s : builder.get_parameter<std::vector<std::string>>("bp_impls"))
-      branch_module_pimpl.push_back(champsim::modules::branch_predictor::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::core_module*>(this)}));
-    for(auto s : builder.get_parameter<std::vector<std::string>>("btb_impls"))
-      btb_module_pimpl.push_back(champsim::modules::btb::create_instance(champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::core_module*>(this)}));
+    auto bp_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("bp_params", true);
+    auto btb_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("btb_params", true);
+    for(auto s : builder.get_parameter<std::vector<std::string>>("bp_impls")) {
+      auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::core_module*>(this)};
+      nested.apply_nested_params(bp_params);
+      branch_module_pimpl.push_back(champsim::modules::branch_predictor::create_instance(nested));
+    }
+    for(auto s : builder.get_parameter<std::vector<std::string>>("btb_impls")) {
+      auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::core_module*>(this)};
+      nested.apply_nested_params(btb_params);
+      btb_module_pimpl.push_back(champsim::modules::btb::create_instance(nested));
+    }
     
   }
 };

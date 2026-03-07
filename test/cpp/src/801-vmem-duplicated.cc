@@ -14,7 +14,8 @@ SCENARIO("The virtual memory remove PA asked by PTE")
       constexpr champsim::data::bytes pte_page_size{1ull << 12};
       MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DEFAULT_MEMORY_CONTROLLER", nullptr, champsim::defaults::default_memory_controller()}};
       VirtualMemory uut{champsim::modules::ModuleBuilder{"uut", "DEFAULT_VMEM", nullptr, champsim::defaults::default_vmem()}
-          .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
+          .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))
+          .add_parameter("page_table_levels", static_cast<std::size_t>(levels))};
 
       //we should re-reference many times at random addresses and ensure that we never allocate additional pages
       std::size_t new_size = uut.available_ppages();
