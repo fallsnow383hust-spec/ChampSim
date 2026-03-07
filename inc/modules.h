@@ -24,6 +24,7 @@
 #include <functional>
 #include <string>
 #include <cassert>
+#include <any>
 
 #include "access_type.h"
 #include "address.h"
@@ -499,6 +500,7 @@ struct module_base {
   };
 
   // Environment module interface - the top-level module that owns/constructs the entire simulation
+
   struct environment_module : public module_base<environment_module, environment_module> {
     virtual std::vector<std::reference_wrapper<core_module>> cpu_view() = 0;
     virtual std::vector<std::reference_wrapper<cache_module>> cache_view() = 0;
@@ -509,6 +511,9 @@ struct module_base {
     virtual std::size_t get_num_cpus() const { return 0; }
     virtual unsigned get_block_size() const { return 64; }
     virtual unsigned get_page_size() const { return 4096; }
+
+    // New: allow snooping of ModuleBuilder parameters by module name
+    virtual const ModuleBuilder get_builder_params(const std::string& module_name) const = 0;
 
     virtual ~environment_module() = default;
   };

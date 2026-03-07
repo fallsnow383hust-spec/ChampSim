@@ -234,6 +234,8 @@ static champsim::modules::environment_module::register_module<champsim::environm
 
 champsim::environment::environment(champsim::modules::ModuleBuilder builder)
 {
+  // Store the environment builder itself
+  builder_params_[(builder.get_name().empty() ? "ENVIRONMENT" : builder.get_name())] = builder;
   // Accept pre-parsed JSON from the builder
   json config = builder.get_parameter<json>("config_json");
   bool do_dump = builder.get_dump();
@@ -524,6 +526,7 @@ champsim::environment::environment(champsim::modules::ModuleBuilder builder)
       .add_parameter("offset_bits", champsim::data::bits{offset_bits})
       .add_parameter("match_offset_bits", match_offset);
 
+    builder_params_[ch_name] = ch_builder;
     channels.push_back(module_base<channel_module, environment_module>::create_instance(ch_builder));
   }
 
@@ -559,6 +562,7 @@ champsim::environment::environment(champsim::modules::ModuleBuilder builder)
       dram_ul_channels.push_back(channels.at(idx));
     dram_builder.add_parameter("ul_channels", dram_ul_channels);
 
+    builder_params_["DRAM"] = dram_builder;
     DRAM = module_base<memory_controller_module, environment_module>::create_instance(dram_builder);
   }
 
@@ -586,6 +590,7 @@ champsim::environment::environment(champsim::modules::ModuleBuilder builder)
     vmem_builder.add_parameter("randomization_seed",
       randomization == 0 ? std::optional<uint64_t>{} : std::optional<uint64_t>{static_cast<uint64_t>(randomization)});
 
+    builder_params_["VMEM"] = vmem_builder;
     vmem = module_base<vmem_module, environment_module>::create_instance(vmem_builder);
   }
 
@@ -620,6 +625,7 @@ champsim::environment::environment(champsim::modules::ModuleBuilder builder)
       ptw_builder.add_parameter("pscl_dims", pscl_dims);
     }
 
+    builder_params_[pc.name] = ptw_builder;
     ptws.push_back(module_base<page_table_walker_module, environment_module>::create_instance(ptw_builder));
   }
 
@@ -705,6 +711,7 @@ champsim::environment::environment(champsim::modules::ModuleBuilder builder)
       cache_builder.add_parameter("pref_activate_mask", parse_pref_activate(cc.config["prefetch_activate"]));
 
     cache_index_map[cc.name] = caches.size();
+    builder_params_[cc.name] = cache_builder;
     caches.push_back(module_base<cache_module, environment_module>::create_instance(cache_builder));
   }
 
@@ -741,6 +748,7 @@ champsim::environment::environment(champsim::modules::ModuleBuilder builder)
     // DIB parameters (from separate dib_json, not core config)
     add_json_params(core_builder, dib_json, {{"sets", "dib_set"}, {"ways", "dib_way"}, {"window_size", "dib_window"}});
 
+    builder_params_[cc.name] = core_builder;
     cores.push_back(module_base<core_module, environment_module>::create_instance(core_builder));
   }
 }

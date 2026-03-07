@@ -14,7 +14,7 @@ SCENARIO("A cache increments the useless prefetch count when it evicts an unhit 
     do_nothing_MRC mock_ll;
     to_wq_MRP mock_ul_seed;
     to_rq_MRP mock_ul_test;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l2c()}
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l2c()}
                   .add_parameter("num_sets", static_cast<uint32_t>(1))
                   .add_parameter("num_ways", static_cast<uint32_t>(1))
                   .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul_seed.queues, &mock_ul_test.queues})

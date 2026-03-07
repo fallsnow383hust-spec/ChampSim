@@ -43,7 +43,7 @@ struct dual_interface : champsim::modules::prefetcher {
       return metadata_in;
     }
 
-    dual_interface(champsim::modules::ModuleBuilder builder) {}
+    dual_interface(champsim::modules::ModuleBuilder) {}
   };
 
   champsim::modules::prefetcher::register_module<dual_interface> dual_interface_register("dual_interface_2");
@@ -56,7 +56,7 @@ SCENARIO("The prefetcher interface prefers one that uses champsim::address")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l1d()}
       .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
       .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
       .add_parameter("prefetcher_modules", std::vector<std::string>{"dual_interface_2"})

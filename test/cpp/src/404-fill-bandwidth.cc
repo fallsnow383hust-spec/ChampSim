@@ -16,7 +16,7 @@ SCENARIO("The MSHR respects the fill bandwidth")
   {
     release_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l1d()}
                   .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
                   .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
                   .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
@@ -88,7 +88,7 @@ SCENARIO("Writebacks respect the fill bandwidth")
   {
     do_nothing_MRC mock_ll{20};
     to_wq_MRP mock_ul;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l1d()}
+    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l1d()}
                   .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
                   .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
                   .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))

@@ -12,7 +12,8 @@ TEST_CASE("The virtual memory evaluates the correct shift amounts")
 
   MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DEFAULT_MEMORY_CONTROLLER", nullptr, champsim::defaults::default_memory_controller()}};
   VirtualMemory uut{champsim::modules::ModuleBuilder{"uut", "DEFAULT_VMEM", nullptr, champsim::defaults::default_vmem()}
-      .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
+      .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))
+      .add_parameter("page_table_page_size", champsim::data::bytes{1ul << log2_pte_page_size})};
 
   champsim::data::bits expected_value{LOG2_PAGE_SIZE + (log2_pte_page_size - champsim::lg2(pte_entry::byte_multiple)) * (level - 1)};
   REQUIRE(uut.shamt(level) == expected_value);
@@ -26,7 +27,8 @@ TEST_CASE("The virtual memory evaluates the correct offsets")
 
   MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DEFAULT_MEMORY_CONTROLLER", nullptr, champsim::defaults::default_memory_controller()}};
   VirtualMemory uut{champsim::modules::ModuleBuilder{"uut", "DEFAULT_VMEM", nullptr, champsim::defaults::default_vmem()}
-      .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
+      .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))
+      .add_parameter("page_table_page_size", champsim::data::bytes{1ul << log2_pte_page_size})};
 
   champsim::address addr{(0xffff'ffff'ffe0'0000 | (level << LOG2_PAGE_SIZE)) << ((level - 1) * 9)};
   REQUIRE(uut.get_offset(addr, level) == level);

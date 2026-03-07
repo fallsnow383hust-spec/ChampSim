@@ -8,6 +8,7 @@ The files are organized as follows: "src/xxx-descriptive-name.cc", where "xxx" i
 200-299 - Execution core (out-of-order)
 300-399 - Core retirement
 400-499 - Caches
+500-599 - Environment
 600-699 - Page table walkers
 700-799 - DRAM
 800-899 - Virtual Memory

@@ -112,18 +112,17 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   // Construct the environment via the module system
   std::string env_model = config_json.value("environment", std::string("DEFAULT_ENVIRONMENT"));
+  // Set globals from the environment
+  NUM_CPUS = config_json.value("num_cores", 1u); // default to 1 CPU if not specified, needed for trace validation
+  BLOCK_SIZE = config_json.value("block_size", 64u);
+  PAGE_SIZE = config_json.value("page_size", 4096u);
+  LOG2_BLOCK_SIZE = champsim::lg2(BLOCK_SIZE);
+  LOG2_PAGE_SIZE = champsim::lg2(PAGE_SIZE);
 
   auto env_builder = champsim::modules::ModuleBuilder("environment", env_model, static_cast<champsim::modules::environment_module*>(nullptr))
     .add_parameter("config_json", config_json);
   if (knob_dump) env_builder.enable_dump();
   auto* gen_environment = champsim::modules::environment_module::create_instance(env_builder);
-
-  // Set globals from the environment
-  NUM_CPUS = gen_environment->get_num_cpus();
-  BLOCK_SIZE = gen_environment->get_block_size();
-  PAGE_SIZE = gen_environment->get_page_size();
-  LOG2_BLOCK_SIZE = champsim::lg2(BLOCK_SIZE);
-  LOG2_PAGE_SIZE = champsim::lg2(PAGE_SIZE);
 
   if (knob_dump) fmt::print("=== End Module Builder Dump ===\n");
 

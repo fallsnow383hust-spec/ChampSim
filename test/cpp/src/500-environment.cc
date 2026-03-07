@@ -8,10 +8,10 @@
 TEST_CASE("Caches can be built from ModuleBuilder defaults")
 {
   GIVEN("A set of ModuleBuilder defaults for different cache types") {
-    CACHE llc{champsim::modules::ModuleBuilder{"cache0", "CACHE", nullptr, champsim::defaults::default_llc()}};
-    CACHE dtlb{champsim::modules::ModuleBuilder{"cache1", "CACHE", nullptr, champsim::defaults::default_dtlb()}};
-    CACHE itlb{champsim::modules::ModuleBuilder{"cache2", "CACHE", nullptr, champsim::defaults::default_itlb()}};
-    CACHE l1d{champsim::modules::ModuleBuilder{"cache3", "CACHE", nullptr, champsim::defaults::default_l1d()}};
+    CACHE llc{champsim::modules::ModuleBuilder{"cache0", "DEFAULT_CACHE", nullptr, champsim::defaults::default_llc()}};
+    CACHE dtlb{champsim::modules::ModuleBuilder{"cache1", "DEFAULT_CACHE", nullptr, champsim::defaults::default_dtlb()}};
+    CACHE itlb{champsim::modules::ModuleBuilder{"cache2", "DEFAULT_CACHE", nullptr, champsim::defaults::default_itlb()}};
+    CACHE l1d{champsim::modules::ModuleBuilder{"cache3", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l1d()}};
 
     std::vector<CACHE*> caches{&llc, &dtlb, &itlb, &l1d};
     std::vector<std::string> expected_names{"cache0", "cache1", "cache2", "cache3"};

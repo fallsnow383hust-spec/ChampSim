@@ -17,7 +17,7 @@ struct next_line : public champsim::modules::prefetcher {
   // void prefetcher_cycle_operate() {}
   // void prefetcher_final_stats() {}
 
-  next_line(champsim::modules::ModuleBuilder builder) {};
+  next_line(champsim::modules::ModuleBuilder) {};
 };
 
 #endif

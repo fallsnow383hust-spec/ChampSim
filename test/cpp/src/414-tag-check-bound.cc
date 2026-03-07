@@ -12,7 +12,7 @@ TEST_CASE("Tag checks do not break when translation misses back up")
   to_rq_MRP mock_ul{[](auto x, auto y) {
     return x.v_address == y.v_address;
   }};
-  CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l2c()}
+  CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l2c()}
                 .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
                 .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
                 .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_translator.queues))
@@ -71,7 +71,7 @@ TEST_CASE("Backed up translation misses do not prevent translated packets from a
   to_rq_MRP mock_ul{[](auto x, auto y) {
     return x.v_address == y.v_address;
   }};
-  CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "CACHE", nullptr, champsim::defaults::default_l2c()}
+  CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l2c()}
                 .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&seed_ul.queues, &mock_ul.queues})
                 .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
                 .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&refusal_channel))
