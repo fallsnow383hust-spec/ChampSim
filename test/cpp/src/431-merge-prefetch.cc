@@ -99,6 +99,7 @@ SCENARIO("A prefetch MSHR that gets hit is promoted")
 
     WHEN("A " + std::string{str} + " is issued")
     {
+      REQUIRE_FALSE(testbed.uut.MSHR.empty());
       auto old_time_enqueued = testbed.uut.MSHR.front().time_enqueued;
 
       testbed.issue_type(type);
@@ -113,6 +114,7 @@ SCENARIO("A prefetch MSHR that gets hit is promoted")
 
       AND_WHEN("The MSHR is closed")
       {
+        REQUIRE_FALSE(testbed.uut.MSHR.empty());
         champsim::channel::response_type response{testbed.uut.MSHR.front().address, testbed.uut.MSHR.front().v_address,
                                                   testbed.uut.MSHR.front().data_promise->data, 0, testbed.uut.MSHR.front().instr_depend_on_me};
 

@@ -22,10 +22,15 @@ SCENARIO("The prefetch queue size limits the number of prefetches that can be is
       elem->begin_phase();
     }
 
-    THEN("The internal prefetch queue size follows from the constructor") { REQUIRE(uut.get_pq_size().back() == pq_size); }
+    THEN("The internal prefetch queue size follows from the constructor")
+    {
+      REQUIRE_FALSE(uut.get_pq_size().empty());
+      REQUIRE(uut.get_pq_size().back() == pq_size);
+    }
 
     THEN("The initial internal prefetch queue occupancy is zero")
     {
+      REQUIRE_FALSE(uut.get_pq_occupancy().empty());
       CHECK(uut.get_pq_occupancy().back() == 0);
       CHECK(uut.get_pq_occupancy_ratio().back() == 0);
     }
@@ -48,6 +53,7 @@ SCENARIO("The prefetch queue size limits the number of prefetches that can be is
 
       THEN("The initial internal prefetch queue occupancy increases")
       {
+        REQUIRE_FALSE(uut.get_pq_occupancy().empty());
         CHECK(uut.get_pq_occupancy().back() == pq_size);
         CHECK(uut.get_pq_occupancy_ratio().back() == 1);
       }

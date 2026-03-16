@@ -1,4 +1,3 @@
-#define CATCH_CONFIG_ENABLE_PAIR_STRINGMAKER
 #include <algorithm>
 #include <catch.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
