@@ -146,6 +146,12 @@ struct ModuleBuilder {
     return *this;
   }
 
+  // Store a pre-built std::any directly (avoids double-wrapping when passing resolved references)
+  ModuleBuilder& add_raw_parameter(std::string name, std::any value) {
+    parameters[name] = std::move(value);
+    return *this;
+  }
+
   ModuleBuilder() {}
   ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : module_name(name_), model(model_), parent(parent_), dump_(defaults.dump_) {
     if(!defaults.parameters.empty()) {
@@ -153,6 +159,51 @@ struct ModuleBuilder {
         parameters[param_name] = param_value;
       }
     }
+  }
+};
+
+// Registry for module interfaces: maps interface name strings to factory functions.
+// This allows runtime lookup of which module_base specialization to use for creation.
+class interface_registry {
+  struct interface_info {
+    std::function<std::any(ModuleBuilder)> create;
+    std::function<std::any(const std::vector<std::any>&)> make_vector;
+  };
+
+  static std::map<std::string, interface_info>& registry() {
+    static std::map<std::string, interface_info> r;
+    return r;
+  }
+
+public:
+  static void register_interface(const std::string& name, interface_info info) {
+    if (registry().count(name)) {
+      fmt::print("[MODULE] ERROR: duplicate interface name: {}\n", name);
+      exit(-1);
+    }
+    registry()[name] = std::move(info);
+  }
+
+  static std::any create(const std::string& interface_name, ModuleBuilder builder) {
+    auto it = registry().find(interface_name);
+    if (it == registry().end()) {
+      fmt::print("[MODULE] ERROR: unknown interface: {}\n", interface_name);
+      exit(-1);
+    }
+    return it->second.create(std::move(builder));
+  }
+
+  static std::any make_vector(const std::string& interface_name, const std::vector<std::any>& elements) {
+    auto it = registry().find(interface_name);
+    if (it == registry().end()) {
+      fmt::print("[MODULE] ERROR: unknown interface for vector: {}\n", interface_name);
+      exit(-1);
+    }
+    return it->second.make_vector(elements);
+  }
+
+  static bool has_interface(const std::string& name) {
+    return registry().count(name) > 0;
   }
 };
 
@@ -232,6 +283,25 @@ struct module_base {
           
           std::function<std::unique_ptr<B>(ModuleBuilder builder)> create_module([](ModuleBuilder builder){return std::unique_ptr<B>(new D(builder));});
           add_module(model_name,create_module);
+      }
+    };
+
+    // Register this module_base specialization as a named interface in the interface_registry.
+    // This allows the explicit environment to create modules by interface name string.
+    struct register_interface {
+      register_interface(std::string interface_name) {
+        interface_registry::register_interface(interface_name, {
+          [](ModuleBuilder builder) -> std::any {
+            return create_instance(std::move(builder));
+          },
+          [](const std::vector<std::any>& elements) -> std::any {
+            std::vector<B*> vec;
+            for (auto& e : elements) {
+              vec.push_back(std::any_cast<B*>(e));
+            }
+            return vec;
+          }
+        });
       }
     };
 

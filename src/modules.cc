@@ -42,3 +42,12 @@ namespace champsim::modules {
 
 }
 
+// Interface registrations: map interface name strings to module_base specializations
+static champsim::modules::channel_module::register_interface channel_iface_reg("channel");
+static champsim::modules::cache_module::register_interface cache_iface_reg("cache");
+static champsim::modules::memory_controller_module::register_interface memory_controller_iface_reg("memory_controller");
+static champsim::modules::vmem_module::register_interface vmem_iface_reg("vmem");
+static champsim::modules::page_table_walker_module::register_interface ptw_iface_reg("page_table_walker");
+static champsim::modules::core_module::register_interface core_iface_reg("core");
+static champsim::modules::environment_module::register_interface env_iface_reg("environment");
+

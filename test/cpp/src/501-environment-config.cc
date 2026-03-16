@@ -2,7 +2,7 @@
 #include <catch.hpp>
 #include <nlohmann/json.hpp>
 
-#include "environment.h"
+#include "legacy_environment.h"
 #include "modules.h"
 #include "cache.h"
 

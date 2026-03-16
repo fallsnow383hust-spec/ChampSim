@@ -14,42 +14,35 @@
  * limitations under the License.
  */
 
-#ifndef ENVIRONMENT_H
-#define ENVIRONMENT_H
+#ifndef LEGACY_ENVIRONMENT_H
+#define LEGACY_ENVIRONMENT_H
 
-#include <any>
-#include <map>
 #include <string>
 #include <vector>
+#include <map>
+#include <any>
 
 #include "modules.h"
 
 namespace champsim {
 
-// Explicit environment: reads a hierarchical JSON configuration where each module
-// specifies its name, interface type ("module"), and model ("model").
-// References to other modules use "@name" syntax and are resolved at construction time.
-class environment final : public champsim::modules::environment_module {
-  std::vector<champsim::modules::channel_module*> channels_;
-  champsim::modules::memory_controller_module* DRAM_ = nullptr;
-  champsim::modules::vmem_module* vmem_ = nullptr;
-  std::vector<champsim::modules::page_table_walker_module*> ptws_;
-  std::vector<champsim::modules::cache_module*> caches_;
-  std::vector<champsim::modules::core_module*> cores_;
+class legacy_environment final : public champsim::modules::environment_module {
+  std::vector<champsim::modules::channel_module*> channels;
+  champsim::modules::memory_controller_module* DRAM = nullptr;
+  champsim::modules::vmem_module* vmem = nullptr;
+  std::vector<champsim::modules::page_table_walker_module*> ptws;
+  std::vector<champsim::modules::cache_module*> caches;
+  std::vector<champsim::modules::core_module*> cores;
 
   size_t num_cpus_ = 0;
   unsigned block_size_ = 64;
   unsigned page_size_ = 4096;
 
-  // Created modules by name, for @-reference resolution
-  std::map<std::string, std::any> modules_by_name_;
-  std::map<std::string, std::string> module_interfaces_;
-
-  // Builder params for test snooping
+  // New: map from module name to ModuleBuilder used for construction
   std::map<std::string, champsim::modules::ModuleBuilder> builder_params_;
 
 public:
-  explicit environment(champsim::modules::ModuleBuilder builder);
+  explicit legacy_environment(champsim::modules::ModuleBuilder builder);
 
   std::vector<std::reference_wrapper<champsim::modules::core_module>> cpu_view() override;
   std::vector<std::reference_wrapper<champsim::modules::cache_module>> cache_view() override;
@@ -61,6 +54,7 @@ public:
   unsigned get_block_size() const override { return block_size_; }
   unsigned get_page_size() const override { return page_size_; }
 
+  // New: expose builder params for test snooping
   const champsim::modules::ModuleBuilder get_builder_params(const std::string& module_name) const override {
     auto it = builder_params_.find(module_name);
     if (it != builder_params_.end()) return it->second;
@@ -70,4 +64,4 @@ public:
 
 } // namespace champsim
 
-#endif // ENVIRONMENT_H
+#endif // LEGACY_ENVIRONMENT_H

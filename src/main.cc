@@ -28,6 +28,7 @@
 #include "champsim.h"
 #include "defaults.hpp"
 #include "environment.h"
+#include "legacy_environment.h"
 #include "event_listeners.h"
 #include "modules.h"
 #include "ooo_cpu.h" // for O3_CPU
