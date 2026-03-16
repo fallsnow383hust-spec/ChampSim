@@ -189,13 +189,6 @@ champsim::modules::cache_module* get_cache(champsim::modules::environment_module
   }
   return nullptr;
 }
-champsim::modules::page_table_walker_module* get_ptw(champsim::modules::environment_module* env, const std::string& name) {
-  for (auto& ptw_ref : env->typed_view<champsim::modules::page_table_walker_module>("page_table_walker")) {
-    if (ptw_ref.get().NAME == name)
-      return &ptw_ref.get();
-  }
-  return nullptr;
-}
 
 } // namespace
 
@@ -458,7 +451,7 @@ SCENARIO("Explicit environment dump log contains expected modules and parameters
     auto builder = ModuleBuilder{"dump_explicit", "EXPLICIT_ENVIRONMENT",
                                  static_cast<champsim::modules::environment_module*>(nullptr)};
     builder.add_parameter("config_json", config);
-    auto* env = champsim::modules::environment_module::create_instance(builder);
+    champsim::modules::environment_module::create_instance(builder);
     auto& log = ModuleBuilder::get_dump_log();
 
     THEN("The dump log contains entries for all major module types") {

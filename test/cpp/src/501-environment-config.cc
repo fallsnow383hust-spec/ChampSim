@@ -234,7 +234,7 @@ SCENARIO("Legacy environment dump log contains expected modules and parameters")
     auto builder = ModuleBuilder{"dump_legacy", "DEFAULT_ENVIRONMENT",
                                  static_cast<champsim::modules::environment_module*>(nullptr)};
     builder.add_parameter("config_json", json::object());
-    auto* env = champsim::modules::environment_module::create_instance(builder);
+    champsim::modules::environment_module::create_instance(builder);
     auto& log = ModuleBuilder::get_dump_log();
 
     THEN("The dump log contains entries for all major module types") {
@@ -284,7 +284,7 @@ SCENARIO("Legacy environment dump log contains expected modules and parameters")
     auto builder = ModuleBuilder{"dump_legacy_2c", "DEFAULT_ENVIRONMENT",
                                  static_cast<champsim::modules::environment_module*>(nullptr)};
     builder.add_parameter("config_json", json({{"num_cores", 2}}));
-    auto* env = champsim::modules::environment_module::create_instance(builder);
+    champsim::modules::environment_module::create_instance(builder);
     auto& log = ModuleBuilder::get_dump_log();
 
     THEN("The dump log contains entries for both cores") {
