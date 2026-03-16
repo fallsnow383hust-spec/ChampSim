@@ -1,5 +1,9 @@
 override ROOT_DIR = $(patsubst %/,%,$(dir $(abspath $(firstword $(MAKEFILE_LIST)))))
 
+# Customization points:
+#  - BIN_ROOT: at make-time, override the binary directory
+#  - OBJ_ROOT: at make-time, override the object file directory
+#  - DEP_ROOT: at make-time, override the dependency file directory
 BIN_ROOT := bin
 OBJ_ROOT := .csconfig
 DEP_ROOT := $(OBJ_ROOT)

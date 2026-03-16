@@ -12,7 +12,7 @@ namespace
 {
 // Helper: build a CACHE with ip_stride using the given prefetcher_params
 CACHE make_cache(do_nothing_MRC& mock_ll, to_rq_MRP& mock_ul,
-                 champsim::modules::ModuleBuilder::nested_params_type pref_params = {})
+                 champsim::modules::ModuleBuilder::module_builder_map_type pref_params = {})
 {
   auto builder = champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", nullptr, champsim::defaults::default_l1d()}
     .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
@@ -89,8 +89,8 @@ SCENARIO("ip_stride respects the degree parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    champsim::modules::ModuleBuilder::nested_params_type pref_params;
-    pref_params["ip_stride"]["degree"] = 5;
+    champsim::modules::ModuleBuilder::module_builder_map_type pref_params;
+    pref_params["ip_stride"] = champsim::modules::ModuleBuilder{"", "ip_stride", nullptr}.add_parameter("degree", 5);
     auto uut = make_cache(mock_ll, mock_ul, pref_params);
     auto count = run_stride_test(mock_ll, mock_ul, uut);
 
@@ -104,8 +104,8 @@ SCENARIO("ip_stride respects the degree parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    champsim::modules::ModuleBuilder::nested_params_type pref_params;
-    pref_params["ip_stride"]["degree"] = 1;
+    champsim::modules::ModuleBuilder::module_builder_map_type pref_params;
+    pref_params["ip_stride"] = champsim::modules::ModuleBuilder{"", "ip_stride", nullptr}.add_parameter("degree", 1);
     auto uut = make_cache(mock_ll, mock_ul, pref_params);
     auto count = run_stride_test(mock_ll, mock_ul, uut);
 
@@ -122,8 +122,8 @@ SCENARIO("ip_stride respects the tracker_sets parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    champsim::modules::ModuleBuilder::nested_params_type pref_params;
-    pref_params["ip_stride"]["tracker_sets"] = static_cast<std::size_t>(1);
+    champsim::modules::ModuleBuilder::module_builder_map_type pref_params;
+    pref_params["ip_stride"] = champsim::modules::ModuleBuilder{"", "ip_stride", nullptr}.add_parameter("tracker_sets", static_cast<std::size_t>(1));
     auto uut = make_cache(mock_ll, mock_ul, pref_params);
 
     // With only 1 set, the table still works (just more conflicts).
@@ -139,8 +139,8 @@ SCENARIO("ip_stride respects the tracker_ways parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    champsim::modules::ModuleBuilder::nested_params_type pref_params;
-    pref_params["ip_stride"]["tracker_ways"] = static_cast<std::size_t>(1);
+    champsim::modules::ModuleBuilder::module_builder_map_type pref_params;
+    pref_params["ip_stride"] = champsim::modules::ModuleBuilder{"", "ip_stride", nullptr}.add_parameter("tracker_ways", static_cast<std::size_t>(1));
     auto uut = make_cache(mock_ll, mock_ul, pref_params);
 
     auto count = run_stride_test(mock_ll, mock_ul, uut);

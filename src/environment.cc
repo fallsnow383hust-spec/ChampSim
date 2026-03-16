@@ -173,7 +173,6 @@ champsim::environment::environment(ModuleBuilder builder)
 {
   builder_params_[(builder.get_name().empty() ? "ENVIRONMENT" : builder.get_name())] = builder;
   json config = builder.get_parameter<json>("config_json");
-  bool do_dump = builder.get_dump();
 
   block_size_ = config.value("block_size", 64u);
   page_size_ = config.value("page_size", 4096u);
@@ -196,7 +195,6 @@ champsim::environment::environment(ModuleBuilder builder)
     std::string model = child["model"].get<std::string>();
 
     auto mod_builder = ModuleBuilder{name, model, static_cast<environment_module*>(this)};
-    if (do_dump) mod_builder.enable_dump();
 
     // Process all JSON parameters (skip reserved keys)
     for (auto& [key, val] : child.items()) {
@@ -277,24 +275,25 @@ champsim::environment::environment(ModuleBuilder builder)
     // Handle nested children generically: group by interface type
     if (child.contains("children")) {
       std::map<std::string, std::vector<std::string>> child_models_by_iface;
-      std::map<std::string, ModuleBuilder::nested_params_type> child_params_by_iface;
+      std::map<std::string, ModuleBuilder::module_builder_map_type> child_params_by_iface;
 
       for (auto& sub : child["children"]) {
         std::string sub_iface = sub["module"].get<std::string>();
+        std::string sub_name = sub["name"].get<std::string>();
         std::string sub_model = sub["model"].get<std::string>();
 
         // Extract extra parameters (beyond name/module/model)
-        std::map<std::string, std::any> extra;
+        ModuleBuilder child_builder{sub_name, sub_model, nullptr};
         for (auto& [sk, sv] : sub.items()) {
           if (sk == "name" || sk == "module" || sk == "model") continue;
-          if (sv.is_boolean()) extra[sk] = sv.get<bool>();
-          else if (sv.is_number_integer()) extra[sk] = sv.get<int64_t>();
-          else if (sv.is_number_float()) extra[sk] = sv.get<double>();
-          else if (sv.is_string()) extra[sk] = sv.get<std::string>();
+          if (sv.is_boolean()) child_builder.add_parameter(sk, sv.get<bool>());
+          else if (sv.is_number_integer()) child_builder.add_parameter(sk, sv.get<int64_t>());
+          else if (sv.is_number_float()) child_builder.add_parameter(sk, sv.get<double>());
+          else if (sv.is_string()) child_builder.add_parameter(sk, sv.get<std::string>());
         }
 
         child_models_by_iface[sub_iface].push_back(sub_model);
-        if (!extra.empty()) child_params_by_iface[sub_iface][sub_model] = extra;
+        child_params_by_iface[sub_iface][sub_model] = std::move(child_builder);
       }
 
       for (auto& [child_iface, models] : child_models_by_iface) {

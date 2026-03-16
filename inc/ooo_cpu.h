@@ -227,8 +227,8 @@ public:
       fmt::print("[CPU {}] WARNING: No btb modules specified, using basic_btb\n",cpu);
       builder.add_parameter<std::vector<std::string>>("btb_modules", {"basic_btb"});
     }
-    auto bp_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("branch_predictor_params", true);
-    auto btb_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("btb_params", true);
+    auto bp_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("branch_predictor_params", true);
+    auto btb_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("btb_params", true);
     for(auto s : builder.get_parameter<std::vector<std::string>>("branch_predictor_modules")) {
       auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::core_module*>(this)};
       nested.apply_nested_params(bp_params);

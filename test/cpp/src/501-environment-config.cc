@@ -211,10 +211,10 @@ SCENARIO("Environment with custom virtual_memory levels") {
 SCENARIO("Environment dump mode does not crash") {
   GIVEN("An empty config with dump enabled") {
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(true);
     auto builder = ModuleBuilder{"dump_env", "DEFAULT_ENVIRONMENT",
                                  static_cast<champsim::modules::environment_module*>(nullptr)};
     builder.add_parameter("config_json", json::object());
-    builder.enable_dump();
 
     THEN("Construction succeeds and dump log is non-empty") {
       auto* env = champsim::modules::environment_module::create_instance(builder);
@@ -223,16 +223,17 @@ SCENARIO("Environment dump mode does not crash") {
     }
 
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(false);
   }
 }
 
 SCENARIO("Legacy environment dump log contains expected modules and parameters") {
   GIVEN("A default single-core config with dump enabled") {
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(true);
     auto builder = ModuleBuilder{"dump_legacy", "DEFAULT_ENVIRONMENT",
                                  static_cast<champsim::modules::environment_module*>(nullptr)};
     builder.add_parameter("config_json", json::object());
-    builder.enable_dump();
     auto* env = champsim::modules::environment_module::create_instance(builder);
     auto& log = ModuleBuilder::get_dump_log();
 
@@ -274,14 +275,15 @@ SCENARIO("Legacy environment dump log contains expected modules and parameters")
     }
 
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(false);
   }
 
   GIVEN("A 2-core config with dump enabled") {
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(true);
     auto builder = ModuleBuilder{"dump_legacy_2c", "DEFAULT_ENVIRONMENT",
                                  static_cast<champsim::modules::environment_module*>(nullptr)};
     builder.add_parameter("config_json", json({{"num_cores", 2}}));
-    builder.enable_dump();
     auto* env = champsim::modules::environment_module::create_instance(builder);
     auto& log = ModuleBuilder::get_dump_log();
 
@@ -298,6 +300,7 @@ SCENARIO("Legacy environment dump log contains expected modules and parameters")
     }
 
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(false);
   }
 }
 
@@ -416,11 +419,11 @@ SCENARIO("Prefetcher module list and nested params parsing covers all branches a
     REQUIRE(pf_mods[0] == "no");
     REQUIRE(pf_mods[1] == "ip_stride");
     REQUIRE(pf_mods[2] == "va_ampm_lite");
-    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("prefetcher_params");
+    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("prefetcher_params");
     REQUIRE(pf_params.count("ip_stride"));
-    REQUIRE(std::any_cast<int64_t>(pf_params["ip_stride"]["degree"]) == 8);
+    REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 8);
     REQUIRE(pf_params.count("va_ampm_lite"));
-    REQUIRE(std::any_cast<int64_t>(pf_params["va_ampm_lite"]["window_size"]) == 16);
+    REQUIRE(pf_params["va_ampm_lite"].get_parameter<int64_t>("window_size") == 16);
   }
   GIVEN("prefetcher as single object") {
     json config = { {"L1D", {
@@ -432,9 +435,9 @@ SCENARIO("Prefetcher module list and nested params parsing covers all branches a
     auto pf_mods = builder.get_parameter<std::vector<std::string>>("prefetcher_modules");
     REQUIRE(pf_mods.size() == 1);
     REQUIRE(pf_mods[0] == "ip_stride");
-    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("prefetcher_params");
+    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("prefetcher_params");
     REQUIRE(pf_params.count("ip_stride"));
-    REQUIRE(std::any_cast<int64_t>(pf_params["ip_stride"]["degree"]) == 4);
+    REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 4);
   }
   GIVEN("prefetcher as array of objects only") {
     json config = { {"L1D", {
@@ -450,11 +453,11 @@ SCENARIO("Prefetcher module list and nested params parsing covers all branches a
     REQUIRE(pf_mods.size() == 2);
     REQUIRE(pf_mods[0] == "ip_stride");
     REQUIRE(pf_mods[1] == "va_ampm_lite");
-    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("prefetcher_params");
+    auto pf_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("prefetcher_params");
     REQUIRE(pf_params.count("ip_stride"));
-    REQUIRE(std::any_cast<int64_t>(pf_params["ip_stride"]["degree"]) == 2);
+    REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 2);
     REQUIRE(pf_params.count("va_ampm_lite"));
-    REQUIRE(std::any_cast<int64_t>(pf_params["va_ampm_lite"]["window_size"]) == 32);
+    REQUIRE(pf_params["va_ampm_lite"].get_parameter<int64_t>("window_size") == 32);
   }
 }
 
@@ -505,12 +508,12 @@ SCENARIO("Environment builder parameter snooping exposes config propagation") {
     REQUIRE(pf_mods.size() == 1);
     REQUIRE(pf_mods[0] == "ip_stride");
     // Check nested params
-    auto repl_params = l1d.get_parameter<ModuleBuilder::nested_params_type>("replacement_params");
+    auto repl_params = l1d.get_parameter<ModuleBuilder::module_builder_map_type>("replacement_params");
     REQUIRE(repl_params.count("ship"));
-    REQUIRE(std::any_cast<int64_t>(repl_params["ship"]["param1"]) == 42);
-    auto pf_params = l1d.get_parameter<ModuleBuilder::nested_params_type>("prefetcher_params");
+    REQUIRE(repl_params["ship"].get_parameter<int64_t>("param1") == 42);
+    auto pf_params = l1d.get_parameter<ModuleBuilder::module_builder_map_type>("prefetcher_params");
     REQUIRE(pf_params.count("ip_stride"));
-    REQUIRE(std::any_cast<int64_t>(pf_params["ip_stride"]["degree"]) == 4);
+    REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 4);
 
     // PTW
     auto ptw = env->get_builder_params("cpu0_PTW");

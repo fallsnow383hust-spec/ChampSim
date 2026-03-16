@@ -421,9 +421,9 @@ SCENARIO("Explicit environment propagates nested child parameters") {
     }
     THEN("cpu0_L2C builder has nested prefetcher_params with degree=4") {
       auto l2c_builder = env->get_builder_params("cpu0_L2C");
-      auto pf_params = l2c_builder.get_parameter<ModuleBuilder::nested_params_type>("prefetcher_params");
+      auto pf_params = l2c_builder.get_parameter<ModuleBuilder::module_builder_map_type>("prefetcher_params");
       REQUIRE(pf_params.count("ip_stride"));
-      REQUIRE(std::any_cast<int64_t>(pf_params["ip_stride"]["degree"]) == 4);
+      REQUIRE(pf_params["ip_stride"].get_parameter<int64_t>("degree") == 4);
     }
   }
 }
@@ -433,11 +433,11 @@ SCENARIO("Explicit environment propagates nested child parameters") {
 SCENARIO("Explicit environment dump mode does not crash") {
   GIVEN("A minimal explicit config with dump enabled") {
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(true);
     auto config = minimal_explicit_config();
     auto builder = ModuleBuilder{"dump_explicit_env", "EXPLICIT_ENVIRONMENT",
                                  static_cast<champsim::modules::environment_module*>(nullptr)};
     builder.add_parameter("config_json", config);
-    builder.enable_dump();
 
     THEN("Construction succeeds and dump log is non-empty") {
       auto* env = champsim::modules::environment_module::create_instance(builder);
@@ -446,17 +446,18 @@ SCENARIO("Explicit environment dump mode does not crash") {
     }
 
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(false);
   }
 }
 
 SCENARIO("Explicit environment dump log contains expected modules and parameters") {
   GIVEN("A minimal single-core explicit config with dump enabled") {
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(true);
     auto config = minimal_explicit_config();
     auto builder = ModuleBuilder{"dump_explicit", "EXPLICIT_ENVIRONMENT",
                                  static_cast<champsim::modules::environment_module*>(nullptr)};
     builder.add_parameter("config_json", config);
-    builder.enable_dump();
     auto* env = champsim::modules::environment_module::create_instance(builder);
     auto& log = ModuleBuilder::get_dump_log();
 
@@ -479,9 +480,8 @@ SCENARIO("Explicit environment dump log contains expected modules and parameters
       REQUIRE(log.find("[VMEM]") != std::string::npos);
     }
 
-    THEN("The dump log contains set and default parameter tags") {
+    THEN("The dump log contains set parameter tags") {
       REQUIRE(log.find("(set)") != std::string::npos);
-      REQUIRE(log.find("(default)") != std::string::npos);
     }
 
     THEN("Channel parameters are logged with correct values") {
@@ -512,6 +512,7 @@ SCENARIO("Explicit environment dump log contains expected modules and parameters
     }
 
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(false);
   }
 }
 

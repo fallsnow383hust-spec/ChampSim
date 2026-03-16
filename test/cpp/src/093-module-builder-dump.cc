@@ -20,11 +20,12 @@ static champsim::modules::prefetcher::register_module<dummy_module> dummy_reg("t
 SCENARIO("ModuleBuilder dump logs parameter accesses when enabled")
 {
   ModuleBuilder::clear_dump_log();
+  ModuleBuilder::set_dump_enabled(false);
 
   GIVEN("A builder with dump enabled, one param set and one left to default")
   {
+    ModuleBuilder::set_dump_enabled(true);
     auto builder = ModuleBuilder{"test_mod", "test_dummy_093", static_cast<champsim::modules::cache_module*>(nullptr)};
-    builder.enable_dump();
     builder.add_parameter("param_a", 10);
 
     WHEN("get_parameter is called for a set param and an optional defaulted param")
@@ -61,6 +62,7 @@ SCENARIO("ModuleBuilder dump logs parameter accesses when enabled")
   GIVEN("A builder without dump enabled")
   {
     ModuleBuilder::clear_dump_log();
+    ModuleBuilder::set_dump_enabled(false);
     auto builder = ModuleBuilder{"test_mod2", "test_dummy_093", static_cast<champsim::modules::cache_module*>(nullptr)}
       .add_parameter("param_a", 5);
 
@@ -76,18 +78,20 @@ SCENARIO("ModuleBuilder dump logs parameter accesses when enabled")
   }
 
   ModuleBuilder::clear_dump_log();
+  ModuleBuilder::set_dump_enabled(false);
 }
 
 SCENARIO("ModuleBuilder dump works through create_instance")
 {
   ModuleBuilder::clear_dump_log();
+  ModuleBuilder::set_dump_enabled(false);
 
   GIVEN("A registered dummy module with dump enabled, one explicit and one defaulted param")
   {
+    ModuleBuilder::set_dump_enabled(true);
     WHEN("create_instance is called")
     {
       auto builder = ModuleBuilder{"dump_test_mod", "test_dummy_093", static_cast<champsim::modules::cache_module*>(nullptr)};
-      builder.enable_dump();
       builder.add_parameter("param_a", 7);
       auto* instance = champsim::modules::prefetcher::create_instance(builder);
 
@@ -116,16 +120,18 @@ SCENARIO("ModuleBuilder dump works through create_instance")
   }
 
   ModuleBuilder::clear_dump_log();
+  ModuleBuilder::set_dump_enabled(false);
 }
 
 SCENARIO("ModuleBuilder dump flag propagates through defaults constructor")
 {
   ModuleBuilder::clear_dump_log();
+  ModuleBuilder::set_dump_enabled(false);
 
   GIVEN("A defaults builder with dump enabled")
   {
     ModuleBuilder defaults;
-    defaults.enable_dump();
+    ModuleBuilder::set_dump_enabled(true);
 
     WHEN("A new builder is constructed with those defaults")
     {
@@ -143,4 +149,5 @@ SCENARIO("ModuleBuilder dump flag propagates through defaults constructor")
   }
 
   ModuleBuilder::clear_dump_log();
+  ModuleBuilder::set_dump_enabled(false);
 }

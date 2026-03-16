@@ -267,8 +267,8 @@ public:
       fmt::print("[{}] WARNING: No replacement modules specified, using lru\n",NAME);
       builder.get_parameter<std::vector<std::string>>("replacement_modules").push_back("lru");
     }
-    auto pref_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("prefetcher_params", true);
-    auto repl_params = builder.get_parameter<champsim::modules::ModuleBuilder::nested_params_type>("replacement_params", true);
+    auto pref_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("prefetcher_params", true);
+    auto repl_params = builder.get_parameter<champsim::modules::ModuleBuilder::module_builder_map_type>("replacement_params", true);
     for(auto s : builder.get_parameter<std::vector<std::string>>("prefetcher_modules")) {
       auto nested = champsim::modules::ModuleBuilder{builder.get_name()+s,s,static_cast<champsim::modules::cache_module*>(this)};
       nested.apply_nested_params(pref_params);

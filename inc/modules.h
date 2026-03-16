@@ -54,17 +54,52 @@ struct ModuleBuilder {
   std::string module_name = "";
   std::string model = "";
   std::any parent = nullptr;
-  bool dump_ = false;
+  static bool global_dump_enabled_;
   static std::string dump_log_;
 
+  static std::string parent_dump_string(const std::any& parent) {
+    if (!parent.has_value()) return "<unset>";
+    if (parent.type() == typeid(std::nullptr_t)) return "nullptr";
+    return parent.type().name();
+  }
+
+  static std::string builder_identity_string(const ModuleBuilder& builder) {
+    return fmt::format("ModuleBuilder{{name={}, model={}, parent={}}}", builder.module_name, builder.model, parent_dump_string(builder.parent));
+  }
+
+  static std::string builder_identity_string(const ModuleBuilder& builder, const std::string& parent_builder_name) {
+    auto parent_str = parent_dump_string(builder.parent);
+    if (parent_str == "nullptr" && !parent_builder_name.empty()) {
+      parent_str = parent_builder_name;
+    }
+    return fmt::format("ModuleBuilder{{name={}, model={}, parent={}}}", builder.module_name, builder.model, parent_str);
+  }
+
   public:
-  ModuleBuilder& enable_dump() { dump_ = true; return *this; }
-  bool get_dump() const { return dump_; }
+  static void set_dump_enabled(bool enabled) { global_dump_enabled_ = enabled; }
+  static bool is_dump_enabled() { return global_dump_enabled_; }
+
+  bool get_dump() const { return is_dump_enabled(); }
   static const std::string& get_dump_log() { return dump_log_; }
   static void clear_dump_log() { dump_log_.clear(); }
 
   template<typename T>
   std::string dump_line(const std::string& mod, const std::string& name, const T& val, const char* tag) {
+    using value_type = std::decay_t<T>;
+    if constexpr (std::is_same_v<value_type, std::map<std::string, ModuleBuilder>>) {
+      std::string summaries;
+      bool first = true;
+      for (auto& [model_name, nested_builder] : val) {
+        if (!first) summaries += ", ";
+        first = false;
+        summaries += fmt::format("{}: {}", model_name, builder_identity_string(nested_builder, mod));
+      }
+      if (summaries.empty()) summaries = "<empty>";
+      return fmt::format("  [{}] {} = {} ({})\n", mod, name, summaries, tag);
+    }
+    if constexpr (std::is_same_v<value_type, ModuleBuilder>) {
+      return fmt::format("  [{}] {} = {} ({})\n", mod, name, builder_identity_string(val, mod), tag);
+    }
     if constexpr (fmt::is_formattable<T>::value) {
       try { return fmt::format("  [{}] {} = {} ({})\n", mod, name, val, tag); }
       catch (...) {}
@@ -80,7 +115,7 @@ struct ModuleBuilder {
     if(auto it = parameters.find(name); it != parameters.end()) {
       try {
         auto val = std::any_cast<T>(it->second);
-        if (dump_) {
+        if (is_dump_enabled()) {
           auto line = dump_line(module_name, name, val, "set");
           dump_log_ += line;
           fmt::print("{}", line);
@@ -91,7 +126,7 @@ struct ModuleBuilder {
         // For arithmetic types, try converting from whatever numeric type was stored
         T result{};
         if (champsim::numeric_any_cast(it->second, result)) {
-          if (dump_) {
+          if (is_dump_enabled()) {
             auto line = dump_line(module_name, name, result, "set");
             dump_log_ += line;
             fmt::print("{}", line);
@@ -103,7 +138,7 @@ struct ModuleBuilder {
       }
     } else {
       if(optional) {
-        if (dump_) {
+        if (is_dump_enabled()) {
           auto line = dump_line(module_name, name, default_value, "default");
           dump_log_ += line;
           fmt::print("{}", line);
@@ -131,15 +166,20 @@ struct ModuleBuilder {
   template<typename T>
   T* get_parent() const { return std::any_cast<T*>(parent); }
 
-  // Type for storing per-model parameter maps (model_name -> (param_name -> value))
-  using nested_params_type = std::map<std::string, std::map<std::string, std::any>>;
+  // Type for storing per-model builders (model_name -> builder)
+  using module_builder_map_type = std::map<std::string, ModuleBuilder>;
+
+  const std::map<std::string, std::any>& get_parameters() const { return parameters; }
 
   bool is_valid() const {return model != "" && module_name != "" && parent.has_value() && parent.type() != typeid(std::nullptr_t);}
 
-  // Populate this builder with parameters from a nested_params_type map, if the model has an entry
-  ModuleBuilder& apply_nested_params(const nested_params_type& params_map) {
+  // Populate this builder with parameters from a module_builder_map_type map, if the model has an entry
+  ModuleBuilder& apply_nested_params(const module_builder_map_type& params_map) {
     if (auto it = params_map.find(model); it != params_map.end()) {
-      for (auto& [k, v] : it->second) {
+      if (!it->second.module_name.empty()) {
+        module_name = it->second.module_name;
+      }
+      for (auto& [k, v] : it->second.parameters) {
         parameters[k] = v;
       }
     }
@@ -153,7 +193,7 @@ struct ModuleBuilder {
   }
 
   ModuleBuilder() {}
-  ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : module_name(name_), model(model_), parent(parent_), dump_(defaults.dump_) {
+  ModuleBuilder(std::string name_, std::string model_, std::any parent_, ModuleBuilder defaults = ModuleBuilder{}) : module_name(name_), model(model_), parent(parent_) {
     if(!defaults.parameters.empty()) {
       for(auto& [param_name, param_value] : defaults.parameters) {
         parameters[param_name] = param_value;
@@ -640,34 +680,6 @@ struct module_base {
   };
 
 }
-
-template <>
-struct fmt::formatter<champsim::modules::ModuleBuilder::nested_params_type> : fmt::formatter<std::string> {
-  auto format(const champsim::modules::ModuleBuilder::nested_params_type& map, fmt::format_context& ctx) const {
-    std::string result = "{";
-    bool first_outer = true;
-    for (auto& [model, params] : map) {
-      if (!first_outer) result += ", ";
-      first_outer = false;
-      result += model + ": {";
-      bool first_inner = true;
-      for (auto& [k, v] : params) {
-        if (!first_inner) result += ", ";
-        first_inner = false;
-        result += k + "=";
-        if (v.type() == typeid(int64_t)) result += std::to_string(std::any_cast<int64_t>(v));
-        else if (v.type() == typeid(uint64_t)) result += std::to_string(std::any_cast<uint64_t>(v));
-        else if (v.type() == typeid(double)) result += std::to_string(std::any_cast<double>(v));
-        else if (v.type() == typeid(bool)) result += std::any_cast<bool>(v) ? "true" : "false";
-        else if (v.type() == typeid(std::string)) result += std::any_cast<std::string>(v);
-        else result += "<any>";
-      }
-      result += "}";
-    }
-    result += "}";
-    return fmt::formatter<std::string>::format(result, ctx);
-  }
-};
 
 // Formatter for vector of pointers to types with a NAME member
 template <typename T>

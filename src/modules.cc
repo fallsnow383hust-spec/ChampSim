@@ -19,6 +19,7 @@
 #include "cache.h"
 
 // Static member definitions
+bool champsim::modules::ModuleBuilder::global_dump_enabled_ = false;
 std::string champsim::modules::ModuleBuilder::dump_log_;
 
 namespace champsim::modules {

@@ -122,7 +122,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   auto env_builder = champsim::modules::ModuleBuilder("environment", env_model, static_cast<champsim::modules::environment_module*>(nullptr))
     .add_parameter("config_json", config_json);
-  if (knob_dump) env_builder.enable_dump();
+  champsim::modules::ModuleBuilder::set_dump_enabled(knob_dump);
   auto* gen_environment = champsim::modules::environment_module::create_instance(env_builder);
 
   if (knob_dump) fmt::print("=== End Module Builder Dump ===\n");

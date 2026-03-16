@@ -115,22 +115,23 @@ std::vector<std::string> parse_module_list(const json& j, const std::string& key
 // Helper: extract per-module parameter maps from a nested module spec
 // Supports: "prefetcher": "no", "prefetcher": {"model": "ip_stride", "degree": 4},
 //           "prefetcher": ["no", {"model": "ip_stride", "degree": 4}]
-// Returns map from model name -> (param_name -> std::any value)
-using param_map_type = std::map<std::string, std::map<std::string, std::any>>;
+// Returns map from model name -> ModuleBuilder containing per-model params
+using param_map_type = ModuleBuilder::module_builder_map_type;
 param_map_type parse_module_params(const json& j, const std::string& key) {
   param_map_type result;
   if (!j.contains(key)) return result;
   auto& v = j[key];
 
-  auto extract_params = [](const json& obj) -> std::map<std::string, std::any> {
-    std::map<std::string, std::any> params;
+  auto extract_params = [](const json& obj) -> ModuleBuilder {
+    auto model = obj.contains("model") ? obj["model"].get<std::string>() : std::string{};
+    ModuleBuilder params{"", model, nullptr};
     for (auto& [k, val] : obj.items()) {
       if (k == "model") continue;
-      if (val.is_number_integer()) params[k] = val.get<int64_t>();
-      else if (val.is_number_unsigned()) params[k] = val.get<uint64_t>();
-      else if (val.is_number_float()) params[k] = val.get<double>();
-      else if (val.is_boolean()) params[k] = val.get<bool>();
-      else if (val.is_string()) params[k] = val.get<std::string>();
+      if (val.is_number_integer()) params.add_parameter(k, val.get<int64_t>());
+      else if (val.is_number_unsigned()) params.add_parameter(k, val.get<uint64_t>());
+      else if (val.is_number_float()) params.add_parameter(k, val.get<double>());
+      else if (val.is_boolean()) params.add_parameter(k, val.get<bool>());
+      else if (val.is_string()) params.add_parameter(k, val.get<std::string>());
     }
     return params;
   };
@@ -247,7 +248,6 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 
   // Accept pre-parsed JSON from the builder
   json config = builder.get_parameter<json>("config_json");
-  bool do_dump = builder.get_dump();
 
   // Extract root config (support suffixed sizes like "64B", "4kB")
   block_size_ = config.contains("block_size") ? static_cast<unsigned>(parse_size_value(config["block_size"])) : 64u;
@@ -528,7 +528,6 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     }
 
     auto ch_builder = ModuleBuilder{ch_name, "DEFAULT_CHANNEL", static_cast<environment_module*>(this)};
-    if (do_dump) ch_builder.enable_dump();
     ch_builder.add_parameter("rq_size", rq_size)
       .add_parameter("pq_size", pq_size)
       .add_parameter("wq_size", wq_size)
@@ -546,7 +545,6 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     int data_rate = pmem_json.value("data_rate", pmem_json.value("frequency", 3200));
     auto dram_builder = ModuleBuilder{"DRAM", "DEFAULT_MEMORY_CONTROLLER", static_cast<environment_module*>(this),
                                       champsim::defaults::default_memory_controller()};
-    if (do_dump) dram_builder.enable_dump();
     dram_builder
       .add_parameter("dbus_period", champsim::chrono::picoseconds{freq_to_period(data_rate)})
       .add_parameter("mc_period", champsim::chrono::picoseconds{freq_to_period(data_rate / 2)})
@@ -587,7 +585,6 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 
     auto vmem_builder = ModuleBuilder{"VMEM", "DEFAULT_VMEM", static_cast<environment_module*>(this),
                                       champsim::defaults::default_vmem()};
-    if (do_dump) vmem_builder.enable_dump();
     vmem_builder
       .add_parameter("page_table_page_size", champsim::data::bytes{
           vmem_json.contains("pte_page_size") ? static_cast<int>(parse_size_value(vmem_json["pte_page_size"])) : 4096})
@@ -608,7 +605,6 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   for (auto& pc : ptw_cfgs) {
     auto ptw_builder = ModuleBuilder{pc.name, pc.model, static_cast<environment_module*>(this),
                                      champsim::defaults::default_ptw()};
-    if (do_dump) ptw_builder.enable_dump();
 
     std::vector<channel_module*> ptw_ul_channels;
     for (auto idx : find_upper_indices(pc.name))
@@ -649,7 +645,6 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     auto& cc = cache_cfgs[cache_name];
 
     auto cache_builder = ModuleBuilder{cc.name, cc.model, static_cast<environment_module*>(this), cc.defaults_builder};
-    if (do_dump) cache_builder.enable_dump();
 
     std::vector<channel_module*> cache_ul_channels;
     for (auto idx : find_upper_indices(cc.name))
@@ -729,7 +724,6 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   for (auto& cc : core_cfgs) {
     auto core_builder = ModuleBuilder{cc.name, cc.model, static_cast<environment_module*>(this),
                                       champsim::defaults::default_core()};
-    if (do_dump) core_builder.enable_dump();
 
     auto l1i_ptr = caches.at(cache_index_map[cc.l1i_name]);
     auto l1d_ptr = caches.at(cache_index_map[cc.l1d_name]);

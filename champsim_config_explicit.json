@@ -354,7 +354,7 @@
       "lower_level": "@cpu0_L2C_LLC_channel",
       "lower_translate": "@cpu0_L2C_cpu0_STLB_channel",
       "children": [
-        {"name": "cpu0_L2C_prefetcher", "module": "prefetcher", "model": "spp_dev"},
+        {"name": "cpu0_L2C_prefetcher", "module": "prefetcher", "model": "ip_stride", "degree": 4},
         {"name": "cpu0_L2C_replacement", "module": "replacement", "model": "lru"}
       ]
     },
