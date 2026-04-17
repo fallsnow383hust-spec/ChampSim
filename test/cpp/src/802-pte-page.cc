@@ -14,8 +14,8 @@ SCENARIO("The virtual memory issues references to blocks within a page if they a
 
   GIVEN("A large virtual memory")
   {
-    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"dram", "DEFAULT_MEMORY_CONTROLLER", champsim::defaults::default_memory_controller()}};
-    VirtualMemory uut{champsim::modules::ModuleBuilder{"uut", "DEFAULT_VMEM", champsim::defaults::default_vmem()}
+    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"t802_dram", "DEFAULT_MEMORY_CONTROLLER", champsim::defaults::default_memory_controller()}};
+    VirtualMemory uut{champsim::modules::ModuleBuilder{"t802_uut", "DEFAULT_VMEM", champsim::defaults::default_vmem()}
         .add_parameter("page_table_page_size", pte_page_size)
         .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))};
 

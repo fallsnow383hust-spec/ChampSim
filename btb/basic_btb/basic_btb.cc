@@ -11,7 +11,7 @@
 #include "instruction.h"
 
 champsim::modules::btb::register_module<basic_btb> basic_btb_register("basic_btb");
-std::pair<champsim::address, bool> basic_btb::btb_prediction(champsim::address ip)
+std::pair<champsim::address, bool> basic_btb::btb_prediction(champsim::address ip, [[maybe_unused]] uint8_t branch_type)
 {
   // use BTB for all other branches + direct calls
   auto btb_entry = direct.check_hit(ip);

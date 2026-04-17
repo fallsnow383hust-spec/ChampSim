@@ -73,7 +73,7 @@ SCENARIO("A series of reads arrive at the memory controller and are reordered")
     // is actually either 1, 2, or 3 since timing of 33% greater doesn't work out well
     const std::size_t bankgroup_reaccess_delay_l = 1;
 
-    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"uut", "DRAM", champsim::defaults::default_memory_controller()}
+    MEMORY_CONTROLLER uut{champsim::modules::ModuleBuilder{"t701_uut", "DRAM", champsim::defaults::default_memory_controller()}
                               .add_parameter("dbus_period", clock_period)
                               .add_parameter("mc_period", champsim::chrono::picoseconds{clock_period * 2})
                               .add_parameter("n_rp", trp_cycles)

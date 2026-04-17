@@ -560,31 +560,11 @@ struct module_base {
 
       //prefetcher cache operate
       virtual uint32_t prefetcher_cache_operate([[maybe_unused]] champsim::address addr, [[maybe_unused]] champsim::address ip, [[maybe_unused]] bool cache_hit, [[maybe_unused]] bool useful_prefetch,
-                                                [[maybe_unused]] access_type type, [[maybe_unused]] uint32_t metadata_in) {
-        return prefetcher_cache_operate(addr,ip,(uint8_t)cache_hit,useful_prefetch,type,metadata_in);
-      }
-      virtual uint32_t prefetcher_cache_operate([[maybe_unused]] champsim::address addr, [[maybe_unused]] champsim::address ip, [[maybe_unused]] uint8_t cache_hit, [[maybe_unused]] bool useful_prefetch,
-                                                [[maybe_unused]] access_type type, [[maybe_unused]] uint32_t metadata_in) {
-        return prefetcher_cache_operate(addr,ip,cache_hit,useful_prefetch,champsim::to_underlying<access_type>(type),metadata_in);
-      }
-      virtual uint32_t prefetcher_cache_operate([[maybe_unused]] champsim::address addr, [[maybe_unused]] champsim::address ip, [[maybe_unused]] bool cache_hit, [[maybe_unused]] bool useful_prefetch,
-                                                [[maybe_unused]] std::underlying_type_t<access_type> type, [[maybe_unused]] uint32_t metadata_in) {
-        return prefetcher_cache_operate(addr.to<uint64_t>(),ip.to<uint64_t>(),cache_hit,type,metadata_in);
-      }
-      virtual uint32_t prefetcher_cache_operate([[maybe_unused]] uint64_t addr, [[maybe_unused]] uint64_t ip, [[maybe_unused]] bool cache_hit,[[maybe_unused]] std::underlying_type_t<access_type> type, 
-                                                [[maybe_unused]] uint32_t metadata_in) {return metadata_in;}
+                                                [[maybe_unused]] access_type type, [[maybe_unused]] uint32_t metadata_in) {return metadata_in;}
 
       //prefetcher cache fill
       virtual uint32_t prefetcher_cache_fill([[maybe_unused]] champsim::address addr, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] bool prefetch, 
-                                                [[maybe_unused]] champsim::address evicted_addr, [[maybe_unused]] uint32_t metadata_in) {
-        return prefetcher_cache_fill(addr,set,way,(uint8_t)prefetch,evicted_addr,metadata_in);
-      }
-      virtual uint32_t prefetcher_cache_fill([[maybe_unused]] champsim::address addr, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] uint8_t prefetch,
-                                             [[maybe_unused]] champsim::address evicted_addr, [[maybe_unused]] uint32_t metadata_in) {
-        return prefetcher_cache_fill(addr.to<uint64_t>(), set, way, prefetch, evicted_addr.to<uint64_t>(), metadata_in);
-      }
-      virtual uint32_t prefetcher_cache_fill([[maybe_unused]] uint64_t addr, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] bool prefetch, 
-                                                [[maybe_unused]] uint64_t evicted_addr, [[maybe_unused]] uint32_t metadata_in) {return metadata_in;}
+                                                [[maybe_unused]] champsim::address evicted_addr, [[maybe_unused]] uint32_t metadata_in) {return metadata_in;}
 
       //prefetcher cycle operate
       virtual void prefetcher_cycle_operate() {}
@@ -593,10 +573,7 @@ struct module_base {
       virtual void prefetcher_final_stats() {}
 
       //prefetcher branch operate
-      virtual void prefetcher_branch_operate([[maybe_unused]] champsim::address ip, [[maybe_unused]] uint8_t branch_type, [[maybe_unused]] champsim::address branch_target) {
-        prefetcher_branch_operate(ip.to<uint64_t>(), branch_type, branch_target.to<uint64_t>());
-      }
-      virtual void prefetcher_branch_operate([[maybe_unused]] uint64_t ip, [[maybe_unused]] uint8_t branch_type, [[maybe_unused]] uint64_t branch_target) {}
+      virtual void prefetcher_branch_operate([[maybe_unused]] champsim::address ip, [[maybe_unused]] uint8_t branch_type, [[maybe_unused]] champsim::address branch_target) {}
 
       bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const;
       bool prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const;
@@ -612,40 +589,11 @@ struct module_base {
 
       //find victim
       virtual long find_victim([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] uint64_t instr_id, [[maybe_unused]] long set, [[maybe_unused]] const champsim::cache_block* current_set, [[maybe_unused]] champsim::address ip,
-                                      [[maybe_unused]] champsim::address full_addr, [[maybe_unused]] access_type type) {
-        return find_victim(triggering_cpu,instr_id,set,current_set,ip,full_addr,champsim::to_underlying<access_type>(type));
-      }
-      virtual long find_victim([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] uint64_t instr_id, [[maybe_unused]] long set, [[maybe_unused]] const champsim::cache_block* current_set, [[maybe_unused]] champsim::address ip,
-                                      [[maybe_unused]] champsim::address full_addr, [[maybe_unused]] std::underlying_type_t<access_type> type) {
-        return find_victim(triggering_cpu, instr_id, set, current_set, ip.to<uint64_t>(), full_addr.to<uint64_t>(), static_cast<access_type>(type));
-      }
-      virtual long find_victim([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] uint64_t instr_id, [[maybe_unused]] long set, [[maybe_unused]] const champsim::cache_block* current_set, [[maybe_unused]] uint64_t ip,
-                                      [[maybe_unused]] uint64_t full_addr, [[maybe_unused]] access_type type) {
-        return find_victim(triggering_cpu, instr_id, set, current_set, ip, full_addr, champsim::to_underlying<access_type>(type));
-      }
-      virtual long find_victim([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] uint64_t instr_id, [[maybe_unused]] long set, [[maybe_unused]] const champsim::cache_block* current_set, [[maybe_unused]] uint64_t ip,
-                                      [[maybe_unused]] uint64_t full_addr, [[maybe_unused]] std::underlying_type_t<access_type> type) { return -1;};
+                                      [[maybe_unused]] champsim::address full_addr, [[maybe_unused]] access_type type) { return -1; }
 
       //update replacement state
       virtual void update_replacement_state([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] champsim::address full_addr,
-                                                  [[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address victim_addr, [[maybe_unused]] access_type type, [[maybe_unused]] bool hit) {
-        champsim::address repl_victim = hit ? champsim::address{} : victim_addr;
-        update_replacement_state(triggering_cpu,set,way,full_addr,ip,repl_victim,type,(uint8_t)hit);
-      }
-      virtual void update_replacement_state([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] champsim::address full_addr,
-                                                  [[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address victim_addr, [[maybe_unused]] access_type type, [[maybe_unused]] uint8_t hit) {
-        update_replacement_state(triggering_cpu,set,way,full_addr,ip,victim_addr,champsim::to_underlying<access_type>(type),hit);
-      }
-      virtual void update_replacement_state([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] champsim::address full_addr,
-                                                  [[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address victim_addr, [[maybe_unused]] std::underlying_type_t<access_type> type, [[maybe_unused]] bool hit) {
-        update_replacement_state(triggering_cpu,set,way,full_addr.to<uint64_t>(),ip.to<uint64_t>(),victim_addr.to<uint64_t>(),type,hit);
-      }
-      virtual void update_replacement_state([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] uint64_t full_addr,
-                                                  [[maybe_unused]] uint64_t ip, [[maybe_unused]] uint64_t victim_addr, [[maybe_unused]] std::underlying_type_t<access_type> type, [[maybe_unused]] bool hit) {
-        update_replacement_state(triggering_cpu,set,way,champsim::address{full_addr},champsim::address{ip},static_cast<access_type>(type),hit);
-      }
-      virtual void update_replacement_state([[maybe_unused]] uint32_t triggering_cpu, [[maybe_unused]] long set, [[maybe_unused]] long way, [[maybe_unused]] champsim::address full_addr,
-                                                  [[maybe_unused]] champsim::address ip, [[maybe_unused]] access_type type, [[maybe_unused]] bool hit) {}
+                                                  [[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address victim_addr, [[maybe_unused]] access_type type, [[maybe_unused]] bool hit) {}
 
 
       //replacement cache fill
@@ -665,22 +613,10 @@ struct module_base {
     virtual void initialize_branch_predictor() {}
 
     //last branch result
-    virtual void last_branch_result([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address target, [[maybe_unused]] bool taken, [[maybe_unused]] uint8_t branch_type) {
-      last_branch_result(ip.to<uint64_t>(),target.to<uint64_t>(),taken,branch_type);
-    }
-    virtual void last_branch_result([[maybe_unused]] uint64_t ip, [[maybe_unused]] uint64_t target, [[maybe_unused]] bool taken, [[maybe_unused]] uint8_t branch_type) {}
+    virtual void last_branch_result([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address target, [[maybe_unused]] bool taken, [[maybe_unused]] uint8_t branch_type) {}
 
     //predict branch
-    virtual bool predict_branch([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address predicted_target, [[maybe_unused]] bool always_taken, [[maybe_unused]] uint8_t branch_type) {
-      return predict_branch(ip.to<uint64_t>(),predicted_target.to<uint64_t>(),always_taken,branch_type);
-    }
-    virtual bool predict_branch([[maybe_unused]] uint64_t ip, [[maybe_unused]] uint64_t predicted_target, [[maybe_unused]] bool always_taken, [[maybe_unused]] uint8_t branch_type) {
-      return predict_branch(champsim::address{ip});
-    }
-    virtual bool predict_branch([[maybe_unused]] champsim::address ip) {
-      return predict_branch(ip.to<uint64_t>());
-    }
-    virtual bool predict_branch([[maybe_unused]] uint64_t ip) {return false;}
+    virtual bool predict_branch([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address predicted_target, [[maybe_unused]] bool always_taken, [[maybe_unused]] uint8_t branch_type) {return false;}
 
   };
 
@@ -692,23 +628,10 @@ struct module_base {
     virtual void initialize_btb() {}
 
     //update btb
-    virtual void update_btb([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address predicted_target, [[maybe_unused]] bool taken, [[maybe_unused]] uint8_t branch_type) {
-      update_btb(ip.to<uint64_t>(),predicted_target.to<uint64_t>(),taken,branch_type);
-    }
-    virtual void update_btb([[maybe_unused]] uint64_t ip, [[maybe_unused]] uint64_t predicted_target, [[maybe_unused]] bool taken, [[maybe_unused]] uint8_t branch_type) {}
+    virtual void update_btb([[maybe_unused]] champsim::address ip, [[maybe_unused]] champsim::address predicted_target, [[maybe_unused]] bool taken, [[maybe_unused]] uint8_t branch_type) {}
 
     //btb prediction
-    virtual std::pair<champsim::address, bool> btb_prediction([[maybe_unused]] champsim::address ip, [[maybe_unused]] uint8_t branch_type) {
-      return std::pair<champsim::address, bool>{btb_prediction(ip.to<uint64_t>(),branch_type)};
-    }
-    virtual std::pair<uint64_t, bool> btb_prediction([[maybe_unused]] uint64_t ip, [[maybe_unused]] uint8_t branch_type) {
-      std::pair<champsim::address, bool> result = btb_prediction(champsim::address{ip});
-      return std::pair<uint64_t, bool>{result.first.to<uint64_t>(),result.second};
-    }
-    virtual std::pair<champsim::address, bool> btb_prediction([[maybe_unused]] champsim::address ip) {
-      return std::pair<champsim::address, bool>{btb_prediction(ip.to<uint64_t>())};  
-    }
-    virtual std::pair<uint64_t, bool> btb_prediction([[maybe_unused]] uint64_t ip) {return std::pair<uint64_t, bool>{};}
+    virtual std::pair<champsim::address, bool> btb_prediction([[maybe_unused]] champsim::address ip, [[maybe_unused]] uint8_t branch_type) {return std::pair<champsim::address, bool>{};}
   };
 
   // Environment module interface - the top-level module that owns/constructs the entire simulation

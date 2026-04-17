@@ -12,9 +12,9 @@ namespace
 {
 // Helper: build a CACHE with ip_stride using the given submodule builder
 CACHE make_cache(do_nothing_MRC& mock_ll, to_rq_MRP& mock_ul,
-                 champsim::modules::ModuleBuilder pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"})
+                 champsim::modules::ModuleBuilder pref_sub = champsim::modules::ModuleBuilder{"t454_ip_stride_0", "ip_stride"})
 {
-  auto builder = champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+  auto builder = champsim::modules::ModuleBuilder{"t454_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
     .add_parameter("mshr_size", static_cast<uint32_t>(8))
     .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
     .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
@@ -87,7 +87,7 @@ SCENARIO("ip_stride respects the degree parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    auto pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"}.add_parameter("degree", 5);
+    auto pref_sub = champsim::modules::ModuleBuilder{"t454_ip_stride_1", "ip_stride"}.add_parameter("degree", 5);
     auto uut = make_cache(mock_ll, mock_ul, std::move(pref_sub));
     auto count = run_stride_test(mock_ll, mock_ul, uut);
 
@@ -101,7 +101,7 @@ SCENARIO("ip_stride respects the degree parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    auto pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"}.add_parameter("degree", 1);
+    auto pref_sub = champsim::modules::ModuleBuilder{"t454_ip_stride_2", "ip_stride"}.add_parameter("degree", 1);
     auto uut = make_cache(mock_ll, mock_ul, std::move(pref_sub));
     auto count = run_stride_test(mock_ll, mock_ul, uut);
 
@@ -118,7 +118,7 @@ SCENARIO("ip_stride respects the tracker_sets parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    auto pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"}.add_parameter("tracker_sets", static_cast<std::size_t>(1));
+    auto pref_sub = champsim::modules::ModuleBuilder{"t454_ip_stride_3", "ip_stride"}.add_parameter("tracker_sets", static_cast<std::size_t>(1));
     auto uut = make_cache(mock_ll, mock_ul, std::move(pref_sub));
 
     // With only 1 set, the table still works (just more conflicts).
@@ -134,7 +134,7 @@ SCENARIO("ip_stride respects the tracker_ways parameter")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    auto pref_sub = champsim::modules::ModuleBuilder{"uut_cacheip_stride", "ip_stride"}.add_parameter("tracker_ways", static_cast<std::size_t>(1));
+    auto pref_sub = champsim::modules::ModuleBuilder{"t454_ip_stride_4", "ip_stride"}.add_parameter("tracker_ways", static_cast<std::size_t>(1));
     auto uut = make_cache(mock_ll, mock_ul, std::move(pref_sub));
 
     auto count = run_stride_test(mock_ll, mock_ul, uut);

@@ -541,11 +541,11 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
         }
       }
       if (!is_ptw && pair.lower_name == "DRAM") {
-        // DRAM channel - use DRAM's queue sizes from physical_memory config
-        auto pm = config.value("physical_memory", json::object());
-        rq_size = pm.value("rq_size", 64);
-        wq_size = pm.value("wq_size", 64);
-        pq_size = pm.value("pq_size", 64);
+        // CT always uses infinite queue sizes for the DRAM channel, regardless of
+        // what rq_size/wq_size/pq_size are set to in physical_memory config.
+        rq_size = std::numeric_limits<std::size_t>::max();
+        wq_size = std::numeric_limits<std::size_t>::max();
+        pq_size = std::numeric_limits<std::size_t>::max();
         offset_bits = log2_block_size;
         match_offset = false;
       }
@@ -670,14 +670,13 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     json_bandwidth(ptw_builder, pc.config, "max_write", "max_fill");
 
     // PSCL dimensions
-    if (pc.config.contains("pscl5_set")) {
-      std::array<std::array<uint32_t, 3>, 16> pscl_dims{};
-      pscl_dims[0] = {5, static_cast<uint32_t>(pc.config.value("pscl5_set", 1)), static_cast<uint32_t>(pc.config.value("pscl5_way", 2))};
-      pscl_dims[1] = {4, static_cast<uint32_t>(pc.config.value("pscl4_set", 1)), static_cast<uint32_t>(pc.config.value("pscl4_way", 4))};
-      pscl_dims[2] = {3, static_cast<uint32_t>(pc.config.value("pscl3_set", 2)), static_cast<uint32_t>(pc.config.value("pscl3_way", 4))};
-      pscl_dims[3] = {2, static_cast<uint32_t>(pc.config.value("pscl2_set", 4)), static_cast<uint32_t>(pc.config.value("pscl2_way", 8))};
-      ptw_builder.add_parameter("pscl_dims", pscl_dims);
-    }
+    std::vector<std::array<uint32_t, 3>> pscl_dims{
+        {5, static_cast<uint32_t>(pc.config.value("pscl5_set", 1)), static_cast<uint32_t>(pc.config.value("pscl5_way", 2))},
+        {4, static_cast<uint32_t>(pc.config.value("pscl4_set", 1)), static_cast<uint32_t>(pc.config.value("pscl4_way", 4))},
+        {3, static_cast<uint32_t>(pc.config.value("pscl3_set", 2)), static_cast<uint32_t>(pc.config.value("pscl3_way", 4))},
+        {2, static_cast<uint32_t>(pc.config.value("pscl2_set", 4)), static_cast<uint32_t>(pc.config.value("pscl2_way", 8))}
+    };
+    ptw_builder.add_parameter("pscl_dims", pscl_dims);
 
     builder_params_[pc.name] = ptw_builder;
     ptws.push_back(module_base<page_table_walker_module, environment_module>::create_instance(ptw_builder, this));
@@ -842,6 +841,11 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
           fmt::print(stderr, "[DEFAULT] {}: max_fill_bandwidth={} (derived from sets={})\n", cc.name, champsim::to_underlying(derived_bw), final_sets);
           cache_builder.add_parameter("max_fill_bandwidth", derived_bw);
         }
+      } else if (!cc.config.contains("max_fill")) {
+        // CT copies max_tag_check -> max_fill when fill is absent (cache_builder::get_fill_bandwidth uses value_or(get_tag_bandwidth))
+        auto tag_bw = cache_builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_bandwidth");
+        fmt::print(stderr, "[DEFAULT] {}: max_fill_bandwidth={} (copied from max_tag_check)\n", cc.name, champsim::to_underlying(tag_bw));
+        cache_builder.add_parameter("max_fill_bandwidth", tag_bw);
       }
 
       auto final_fill_bw = cache_builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill_bandwidth");

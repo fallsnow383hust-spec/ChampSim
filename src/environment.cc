@@ -152,15 +152,17 @@ bool try_parse_typed_value(const json& obj, std::any& out) {
   return false;
 }
 
-// Check if a string is an @-reference
-bool is_ref(const std::string& s) { return !s.empty() && s[0] == '@'; }
-std::string ref_name(const std::string& s) { return s.substr(1); }
+// Try to parse an @-reference string, returning the referenced name if valid.
+std::optional<std::string> try_parse_ref(const std::string& s) {
+  if (!s.empty() && s[0] == '@') return s.substr(1);
+  return std::nullopt;
+}
 
 // Check if a JSON array is entirely @-references
 bool is_ref_array(const json& arr) {
   if (!arr.is_array() || arr.empty()) return false;
   for (auto& elem : arr) {
-    if (!elem.is_string() || !is_ref(elem.get<std::string>())) return false;
+    if (!elem.is_string() || !try_parse_ref(elem.get<std::string>())) return false;
   }
   return true;
 }
@@ -180,8 +182,8 @@ void populate_builder(const json& node, ModuleBuilder& builder,
 
     if (val.is_null()) {
       continue;
-    } else if (val.is_string() && is_ref(val.get<std::string>())) {
-      std::string rn = ref_name(val.get<std::string>());
+    } else if (auto ref = val.is_string() ? try_parse_ref(val.get<std::string>()) : std::nullopt) {
+      const auto& rn = *ref;
       auto mit = modules_by_name.find(rn);
       if (mit == modules_by_name.end()) {
         fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: @-reference '{}' not found (used in '{}' param '{}')\n", rn, name, key);
@@ -192,7 +194,7 @@ void populate_builder(const json& node, ModuleBuilder& builder,
       std::vector<std::any> refs;
       std::string ref_iface;
       for (auto& elem : val) {
-        std::string rn = ref_name(elem.get<std::string>());
+        auto rn = *try_parse_ref(elem.get<std::string>());
         auto mit = modules_by_name.find(rn);
         if (mit == modules_by_name.end()) {
           fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: @-reference '{}' not found (in array param '{}' of '{}')\n", rn, key, name);
@@ -230,11 +232,13 @@ void populate_builder(const json& node, ModuleBuilder& builder,
         for (auto& e : val) sv.push_back(e.get<std::string>());
         builder.add_parameter(key, sv);
       } else if (!val.empty() && val[0].is_array()) {
-        std::array<std::array<uint32_t, 3>, 16> dims{};
-        for (std::size_t i = 0; i < val.size() && i < 16; i++) {
+        std::vector<std::array<uint32_t, 3>> dims;
+        for (std::size_t i = 0; i < val.size(); i++) {
+          std::array<uint32_t, 3> entry{};
           for (std::size_t j = 0; j < val[i].size() && j < 3; j++) {
-            dims[i][j] = static_cast<uint32_t>(val[i][j].get<int64_t>());
+            entry[j] = static_cast<uint32_t>(val[i][j].get<int64_t>());
           }
+          dims.push_back(entry);
         }
         builder.add_parameter(key, dims);
       } else {
@@ -315,24 +319,24 @@ champsim::environment::environment(ModuleBuilder builder)
 
   // Compute deadlock threshold purely from parameter types.
   // Every champsim::chrono::picoseconds parameter is a time value; the minimum
-  // is the time quantum and the maximum is the worst-case single latency.
-  // 2x max/min gives worst-case cycles, floored at 500.
+  // is the time quantum and the sum of all latencies is the worst-case total.
+  // sum/min gives worst-case cycles, floored at 500.
   {
     using ps_rep = champsim::chrono::picoseconds::rep;
     ps_rep min_ps = std::numeric_limits<ps_rep>::max();
-    ps_rep max_ps = 0;
+    ps_rep sum_ps = 0;
     for (auto& [name, bp] : builder_params_) {
       for (auto& [key, val] : bp.get_parameters()) {
         if (auto* p = std::any_cast<champsim::chrono::picoseconds>(&val)) {
           if (p->count() > 0) {
             min_ps = std::min(min_ps, p->count());
-            max_ps = std::max(max_ps, p->count());
+            sum_ps += p->count();
           }
         }
       }
     }
     if (min_ps < std::numeric_limits<ps_rep>::max() && min_ps > 0)
-      deadlock_cycles_ = static_cast<int>(std::max(max_ps * 2 / min_ps, ps_rep{500}));
+      deadlock_cycles_ = static_cast<int>(std::max((sum_ps / min_ps)*3, ps_rep{500}));
   }
 }
 

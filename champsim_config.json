@@ -29,7 +29,7 @@
       "dispatch_latency": 1,
       "schedule_latency": 0,
       "execute_latency": 0,
-      "branch_predictor": "bimodal",
+      "branch_predictor": "hashed_perceptron",
       "btb": "basic_btb"
     }
   ],
@@ -182,7 +182,7 @@
   "virtual_memory": {
     "pte_page_size": 4096,
     "num_levels": 5,
-    "minor_fault_penalty": 200,
+    "minor_fault_penalty": 50,
     "randomization": 1
   }
 }

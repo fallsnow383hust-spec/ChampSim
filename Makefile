@@ -106,6 +106,7 @@ $(DEP_ROOT)/replacement/%.d: replacement/%.cc $(module_options) | $$(dir $$@)
 	$(dep_recipe)
 
 ### Compilation rules - tests
+$(OBJ_ROOT)/test/%.o: override CPPFLAGS += -DTEST_CONFIG_DIR='"$(ROOT_DIR)/test/config/"'
 $(OBJ_ROOT)/test/%.o: test/cpp/src/%.cc $(base_options) | $$(dir $$@)
 	$(obj_recipe)
 $(DEP_ROOT)/test/%.d: test/cpp/src/%.cc $(base_options) | $$(dir $$@)

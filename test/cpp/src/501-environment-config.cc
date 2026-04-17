@@ -535,7 +535,7 @@ SCENARIO("Environment builder parameter snooping exposes config propagation") {
     REQUIRE(ptw.is_valid());
     REQUIRE(ptw.get_parameter<champsim::bandwidth::maximum_type>("max_tag_check") == champsim::bandwidth::maximum_type{15});
     REQUIRE(ptw.get_parameter<champsim::bandwidth::maximum_type>("max_fill") == champsim::bandwidth::maximum_type{25});
-    auto pscl = ptw.get_parameter<std::array<std::array<uint32_t, 3>, 16>>("pscl_dims");
+    auto pscl = ptw.get_parameter<std::vector<std::array<uint32_t, 3>>>("pscl_dims");
     REQUIRE(pscl[0][0] == 5);
     REQUIRE(pscl[0][1] == 2);
     REQUIRE(pscl[0][2] == 3);

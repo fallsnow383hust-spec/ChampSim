@@ -21,7 +21,7 @@ struct hit_collector : champsim::modules::prefetcher {
     return metadata_in;
   }
 
-  uint32_t prefetcher_cache_fill(uint64_t, long, long, bool, uint64_t, uint32_t metadata_in)
+  uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in)
   {
     return metadata_in;
   }
@@ -37,13 +37,13 @@ SCENARIO("A prefetch can be issued") {
     constexpr auto fill_latency = 2;
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+    CACHE uut{champsim::modules::ModuleBuilder{"t420_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
       .add_parameter("mshr_size", static_cast<uint32_t>(8))
       .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
       .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
       .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
       .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
-      .add_submodule("prefetcher", champsim::modules::ModuleBuilder{"uut_cachehit_collector", "hit_collector"})
+      .add_submodule("prefetcher", champsim::modules::ModuleBuilder{"t420_hit_collector", "hit_collector"})
     };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};

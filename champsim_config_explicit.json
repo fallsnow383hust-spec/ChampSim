@@ -427,7 +427,7 @@
       "fetch_queues": "@cpu0_cpu0_L1I_channel",
       "data_queues": "@cpu0_cpu0_L1D_channel",
       "children": [
-        {"name": "cpu0_bp", "module": "branch_predictor", "model": "bimodal"},
+        {"name": "cpu0_bp", "module": "branch_predictor", "model": "hashed_perceptron"},
         {"name": "cpu0_btb", "module": "btb", "model": "basic_btb"}
       ]
     }

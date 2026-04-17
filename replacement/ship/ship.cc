@@ -39,7 +39,7 @@ long ship::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, con
 
 // called on every cache hit and cache fill
 void ship::update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                    champsim::address victim_addr, access_type type, uint8_t hit)
+                                    champsim::address victim_addr, access_type type, bool hit)
 {
   using namespace champsim::data::data_literals;
 

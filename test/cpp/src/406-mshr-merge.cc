@@ -43,7 +43,7 @@ SCENARIO("A cache merges two requests in the MSHR")
     to_wq_MRP mock_ul_seed_wq;
     auto& mock_ul_seed = type == access_type::WRITE ? static_cast<queue_issue_MRP&>(mock_ul_seed_wq) : static_cast<queue_issue_MRP&>(mock_ul_seed_rq);
     to_rq_MRP mock_ul_test;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+    CACHE uut{champsim::modules::ModuleBuilder{"t406_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
       .add_parameter("mshr_size", static_cast<uint32_t>(8))
       .add_parameter("num_sets", static_cast<uint32_t>(8))
       .add_parameter("num_ways", static_cast<uint32_t>(1))
@@ -52,7 +52,7 @@ SCENARIO("A cache merges two requests in the MSHR")
       .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
       .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
       .add_parameter("pref_activate_mask", std::vector<access_type>{type})
-      .add_submodule("prefetcher", champsim::modules::ModuleBuilder{"uut_cacheaddress_collector", "address_collector"})
+      .add_submodule("prefetcher", champsim::modules::ModuleBuilder{"t406_address_collector", "address_collector"})
     };
 
     std::array<champsim::operable*, 4> elements{{&mock_ll, &uut, &mock_ul_seed, &mock_ul_test}};

@@ -13,33 +13,15 @@ std::map<champsim::modules::cache_module*, int> fill_interface_discerner;
 struct dual_interface : champsim::modules::prefetcher {
   using prefetcher::prefetcher;
 
-    uint32_t prefetcher_cache_operate(uint64_t, uint64_t, bool, std::underlying_type_t<access_type>, uint32_t metadata_in) override
+    uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, access_type, uint32_t metadata_in) override
     {
       ::operate_interface_discerner[intern_] = 1;
       return metadata_in;
     }
 
-    uint32_t prefetcher_cache_operate(champsim::address, champsim::address, bool, bool, std::underlying_type_t<access_type>, uint32_t metadata_in) override
-    {
-      ::operate_interface_discerner[intern_] = 2;
-      return metadata_in;
-    }
-
-    uint32_t prefetcher_cache_operate(champsim::address, champsim::address, uint8_t, bool, access_type, uint32_t metadata_in) override
-    {
-      ::operate_interface_discerner[intern_] = 3;
-      return metadata_in;
-    }
-
-    uint32_t prefetcher_cache_fill(uint64_t, long, long, bool, uint64_t, uint32_t metadata_in) override
+    uint32_t prefetcher_cache_fill(champsim::address, long, long, bool, champsim::address, uint32_t metadata_in) override
     {
       ::fill_interface_discerner[intern_] = 1;
-      return metadata_in;
-    }
-
-    uint32_t prefetcher_cache_fill(champsim::address, long, long, uint8_t, champsim::address, uint32_t metadata_in) override
-    {
-      ::fill_interface_discerner[intern_] = 2;
       return metadata_in;
     }
 
@@ -56,11 +38,11 @@ SCENARIO("The prefetcher interface prefers one that uses champsim::address")
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::modules::ModuleBuilder{"uut_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+    CACHE uut{champsim::modules::ModuleBuilder{"t430_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
       .add_parameter("mshr_size", static_cast<uint32_t>(8))
       .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
       .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
-      .add_submodule("prefetcher", champsim::modules::ModuleBuilder{"uut_cachedual_interface_2", "dual_interface_2"})
+      .add_submodule("prefetcher", champsim::modules::ModuleBuilder{"t430_dual_interface_2", "dual_interface_2"})
     };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
@@ -88,9 +70,9 @@ SCENARIO("The prefetcher interface prefers one that uses champsim::address")
         for (auto elem : elements)
           elem->_operate();
 
-      THEN("The prefetcher operate hook is called") { REQUIRE(::operate_interface_discerner.at(&uut) == 3); }
+      THEN("The prefetcher operate hook is called") { REQUIRE(::operate_interface_discerner.at(&uut) == 1); }
 
-      THEN("The prefetcher fill hook is called") { REQUIRE(::fill_interface_discerner.at(&uut) == 2); }
+      THEN("The prefetcher fill hook is called") { REQUIRE(::fill_interface_discerner.at(&uut) == 1); }
     }
   }
 }

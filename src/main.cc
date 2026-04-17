@@ -154,7 +154,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   json_option =
       app2.add_option("--json", json_file_name, "The name of the file to receive JSON output. If no name is specified, stdout will be used")->expected(0, 1);
   app2.add_option("--listeners", requested_listeners, "A list of the listeners to be attached to the run");
-  app2.add_option("traces", trace_names, "The paths to the traces")->required()->expected(NUM_CPUS)->check(CLI::ExistingFile);
+  app2.add_option("traces", trace_names, "The paths to the traces")->required()->expected((int)NUM_CPUS)->check(CLI::ExistingFile);
 
   CLI11_PARSE(app2, argc, argv);
 

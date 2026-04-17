@@ -32,7 +32,7 @@ void drrip::update_srrip(long set, long way) { get_rrpv(set, way) = maxRRPV - 1;
 
 // called on every cache hit and cache fill
 void drrip::update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                     champsim::address victim_addr, access_type type, uint8_t hit)
+                                     champsim::address victim_addr, access_type type, bool hit)
 {
 
   // cache hit
