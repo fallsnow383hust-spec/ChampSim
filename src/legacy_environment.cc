@@ -242,13 +242,13 @@ struct ul_pair {
 } // anonymous namespace
 
 
-// Register environment as "DEFAULT_ENVIRONMENT" environment model
-static champsim::modules::environment_module::register_module<champsim::legacy_environment> default_env_register("DEFAULT_ENVIRONMENT");
+// Register environment as "LEGACY_ENVIRONMENT" environment model
+static champsim::modules::environment_module::register_module<champsim::legacy_environment> default_env_register("LEGACY_ENVIRONMENT");
 
 champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilder builder)
 {
   // Store the environment builder itself
-  builder_params_[(builder.get_name().empty() ? "ENVIRONMENT" : builder.get_name())] = builder;
+  builder_params_[(builder.get_name().empty() ? "LEGACY_ENVIRONMENT" : builder.get_name())] = builder;
 
   // Local variables (formerly member variables)
   std::vector<channel_module*> channels;

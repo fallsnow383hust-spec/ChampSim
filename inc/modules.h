@@ -247,12 +247,19 @@ struct ModuleBuilder {
   }
 
   // Get all submodule builders for a given interface type.
-  // Returns an empty vector if no submodules of that type exist.
-  const std::vector<ModuleBuilder>& get_submodules(const std::string& interface_type) const {
+  //
+  // \param interface_type The interface name (e.g. ``"prefetcher"``).
+  // \param optional If true, returns an empty vector when no submodules of
+  //                 that interface are present.  If false (the default), the
+  //                 simulator exits with an error.  Mirrors the ``optional``
+  //                 semantic of ``get_parameter``.
+  const std::vector<ModuleBuilder>& get_submodules(const std::string& interface_type, bool optional = false) const {
     static const std::vector<ModuleBuilder> empty;
     auto it = submodules_.find(interface_type);
-    if (it == submodules_.end()) return empty;
-    return it->second;
+    if (it != submodules_.end() && !it->second.empty()) return it->second;
+    if (optional) return empty;
+    fmt::print("[MODULE] [{}] ERROR: required submodules of interface {} not found\n", module_name, interface_type);
+    exit(-1);
   }
 
   // Check whether submodules of the given interface type exist.

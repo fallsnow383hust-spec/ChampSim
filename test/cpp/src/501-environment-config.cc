@@ -12,7 +12,7 @@ using champsim::modules::ModuleBuilder;
 namespace {
 // Helper to build an environment from a JSON config
 champsim::modules::environment_module* make_env(const json& config) {
-  auto builder = ModuleBuilder{"test_env", "DEFAULT_ENVIRONMENT"};
+  auto builder = ModuleBuilder{"test_env", "LEGACY_ENVIRONMENT"};
   builder.add_parameter("config_json", config);
   return champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
 }
@@ -212,7 +212,7 @@ SCENARIO("Environment dump mode does not crash") {
   GIVEN("An empty config with dump enabled") {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
-    auto builder = ModuleBuilder{"dump_env", "DEFAULT_ENVIRONMENT"};
+    auto builder = ModuleBuilder{"dump_env", "LEGACY_ENVIRONMENT"};
     builder.add_parameter("config_json", json::object());
 
     THEN("Construction succeeds and dump log is non-empty") {
@@ -230,7 +230,7 @@ SCENARIO("Legacy environment dump log contains expected modules and parameters")
   GIVEN("A default single-core config with dump enabled") {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
-    auto builder = ModuleBuilder{"dump_legacy", "DEFAULT_ENVIRONMENT"};
+    auto builder = ModuleBuilder{"dump_legacy", "LEGACY_ENVIRONMENT"};
     builder.add_parameter("config_json", json::object());
     champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
     auto& log = ModuleBuilder::get_dump_log();
@@ -279,7 +279,7 @@ SCENARIO("Legacy environment dump log contains expected modules and parameters")
   GIVEN("A 2-core config with dump enabled") {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
-    auto builder = ModuleBuilder{"dump_legacy_2c", "DEFAULT_ENVIRONMENT"};
+    auto builder = ModuleBuilder{"dump_legacy_2c", "LEGACY_ENVIRONMENT"};
     builder.add_parameter("config_json", json({{"num_cores", 2}}));
     champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
     auto& log = ModuleBuilder::get_dump_log();
@@ -447,6 +447,52 @@ SCENARIO("Prefetcher module list and nested params parsing covers all branches a
     REQUIRE(pf_subs[1].get_model() == "va_ampm_lite");
     REQUIRE(pf_subs[0].get_parameter<int64_t>("degree") == 2);
     REQUIRE(pf_subs[1].get_parameter<int64_t>("window_size") == 32);
+  }
+}
+
+SCENARIO("get_submodules supports the optional flag") {
+  GIVEN("A builder with no submodules of the requested interface") {
+    json config = { {"L1D", {
+      {"prefetcher", json::array({ "no" })}
+    }} };
+    auto* env = make_env(config);
+    champsim::modules::ModuleBuilder builder = env->get_builder_params("cpu0_L1D");
+    REQUIRE(builder.is_valid());
+
+    WHEN("get_submodules is called with optional=true for a missing interface") {
+      const auto& subs = builder.get_submodules("branch_predictor", true);
+      THEN("an empty vector is returned") {
+        REQUIRE(subs.empty());
+      }
+    }
+  }
+
+  GIVEN("A builder with submodules of the requested interface") {
+    json config = { {"L1D", {
+      {"prefetcher", json::array({
+        { {"model", "ip_stride"}, {"degree", 8} }
+      })}
+    }} };
+    auto* env = make_env(config);
+    champsim::modules::ModuleBuilder builder = env->get_builder_params("cpu0_L1D");
+    REQUIRE(builder.is_valid());
+
+    WHEN("get_submodules is called with the default optional=false") {
+      const auto& subs = builder.get_submodules("prefetcher");
+      THEN("the existing submodules are returned") {
+        REQUIRE(subs.size() == 1);
+        REQUIRE(subs[0].get_model() == "ip_stride");
+        REQUIRE(subs[0].get_parameter<int64_t>("degree") == 8);
+      }
+    }
+
+    WHEN("get_submodules is called with optional=true for a present interface") {
+      const auto& subs = builder.get_submodules("prefetcher", true);
+      THEN("the existing submodules are returned") {
+        REQUIRE(subs.size() == 1);
+        REQUIRE(subs[0].get_model() == "ip_stride");
+      }
+    }
   }
 }
 

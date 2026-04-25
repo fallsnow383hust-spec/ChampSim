@@ -8,7 +8,7 @@ Creating a Configuration File
 
    This page describes the **legacy** configuration format, which uses high-level shorthand
    keys (``"branch_predictor"``, ``"L1D"``, ``"num_cores"``, etc.) to auto-generate the full
-   module hierarchy at runtime. This format is handled by the ``DEFAULT_ENVIRONMENT`` module.
+   module hierarchy at runtime. This format is handled by the ``LEGACY_ENVIRONMENT`` module.
 
    For full control over every module in the hierarchy, see the
    :ref:`Explicit Configuration Format <Explicit_Config>`.

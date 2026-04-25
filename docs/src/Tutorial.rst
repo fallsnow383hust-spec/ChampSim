@@ -712,210 +712,289 @@ Part 6: Defining a New Interface
 ------------------------------------------
 
 ChampSim ships with built-in interfaces for prefetchers, replacement policies, branch
-predictors, and BTBs.  But the module system is fully extensible — you can define your
-own interface types and attach them to existing parent modules.
+predictors, and BTBs.  The module system is fully extensible — you can define your own
+interface types, attach them to existing parent modules, and the config system will
+construct them for you from JSON.
 
-This section walks through creating a hypothetical **cache listener** interface: a
-module that is notified of cache events (hits, misses, evictions) for observability
-purposes, without modifying the cache's behavior.
+This section walks through adding a **cache_indexer** interface: a submodule of a
+cache that owns the address → set-index mapping.  The default mapping in ChampSim
+is a simple bit-slice of the block address, which is a common source of conflict
+misses on pathological access patterns (power-of-two strides, aliasing page tables).
+A pluggable indexer lets you swap the mapping (bit-slice, XOR hashing, prime
+modulo, skewed associativity) at runtime from the config file without touching
+the cache core.
+
+The end state is:
+
+* an interface header ``inc/cache_indexer.h``,
+* an interface registration in ``src/modules.cc``,
+* a hook inside ``CACHE::get_set_index`` that consults the indexer when one is attached,
+* two implementations (``bit_slice`` and ``xor_hash``) under ``indexer/``,
+* and a JSON config entry that attaches the indexer as a child of a cache module.
 
 Step 1: Define the Interface
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Create ``inc/cache_listener.h``:
+Create ``inc/cache_indexer.h``:
 
 .. code-block:: cpp
     :linenos:
 
-    #ifndef CACHE_LISTENER_H
-    #define CACHE_LISTENER_H
+    #ifndef CHAMPSIM_CACHE_INDEXER_H
+    #define CHAMPSIM_CACHE_INDEXER_H
 
     #include "modules.h"
 
     namespace champsim::modules {
 
     // -------------------------------------------------------------------------
-    // cache_listener — An interface for cache event observers.
+    // cache_indexer — A submodule of cache_module that computes the set index
+    // for a given address.
     //
-    // Inherits from module_base<cache_listener, cache_module>.
+    // Inherits from module_base<cache_indexer, cache_module>.
     //
-    // The first template argument (cache_listener) is the interface type itself.
-    // The second (cache_module) is the parent type — cache listeners are children
-    // of a cache, just like prefetchers and replacement policies.
+    // The first template argument is the interface type itself (CRTP).  This
+    // keeps the static module_map / instance_map unique to this interface so a
+    // cache_indexer registered as "bit_slice" won't collide with a prefetcher
+    // registered as "bit_slice".  The second argument is the parent type —
+    // because indexers live under a cache, that's cache_module.
     //
-    // module_base provides:
-    //   - register_module<T>  : register an implementation by model name
-    //   - register_interface  : register this interface type by string name
-    //   - create_instance()   : factory function used by the config system
+    // module_base provides (inherited):
+    //   - register_module<T>   : register an implementation by model name
+    //   - register_interface   : register this interface type by string name
+    //   - create_instance(...) : factory used by the config system
     // -------------------------------------------------------------------------
-    struct cache_listener : public module_base<cache_listener, cache_module> {
+    struct cache_indexer : public module_base<cache_indexer, cache_module> {
 
-        virtual ~cache_listener() = default;
+      virtual ~cache_indexer() = default;
 
-        // --- Pure virtual methods that implementations must override ---
-
-        // Called when the simulation starts.
-        virtual void on_initialize() = 0;
-
-        // Called on every cache hit.  Parameters mirror the cache's internal state.
-        virtual void on_hit(champsim::address addr, champsim::address ip,
-                            long set, long way, access_type type) = 0;
-
-        // Called on every cache miss (after victim selection, before fill).
-        virtual void on_miss(champsim::address addr, champsim::address ip,
-                             access_type type) = 0;
-
-        // Called at end of simulation for final reporting.
-        virtual void on_final_stats() = 0;
+      // compute_set_index — map a byte address to a set index in
+      // [0, num_sets()).  The cache asserts the return value is in-range.
+      //
+      // If you want the cache-line-granularity address, strip
+      // get_parent<cache_module>()->get_offset_bits() bits off the bottom.
+      virtual long compute_set_index(champsim::address addr) = 0;
     };
 
     } // namespace champsim::modules
 
     #endif
 
-**Why** ``module_base<cache_listener, cache_module>``?  The first template parameter
-is always the interface class itself (CRTP-style).  This ensures that the static
-factory (``module_map``, ``instance_map``, ``register_module``) is unique to this
-interface — a ``cache_listener`` registration won't collide with a ``prefetcher``
-registration.  The second parameter is the parent type, which determines what
-``get_parent<T>()`` returns.
+**Why CRTP?**  The first template parameter to ``module_base`` is always the
+interface class itself.  ``module_base<cache_indexer, cache_module>`` instantiates a
+set of static registries that are unique to the ``cache_indexer`` interface.  A
+module registered as ``"lru"`` under ``replacement`` will not be visible through
+``cache_indexer``'s registry and vice-versa.
 
 Step 2: Register the Interface
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The config system needs to know about your interface so it can create modules by
-interface name (``"module": "cache_listener"``).  Add a registration in a ``.cc``
-file — you can add it to ``src/modules.cc`` or create a new file:
+The explicit config parser looks up interfaces by string name so that
+``"module": "cache_indexer"`` in JSON resolves to our ``module_base``
+specialization.  Add a single line to ``src/modules.cc`` (where the other
+interfaces — prefetcher, replacement, branch, btb — are registered):
 
 .. code-block:: cpp
 
-    // In src/modules.cc (or a new file that gets compiled):
-    #include "cache_listener.h"
+    #include "cache_indexer.h"
 
-    static champsim::modules::cache_listener::register_interface
-        cache_listener_iface_reg("cache_listener");
+    static champsim::modules::cache_indexer::register_interface
+        cache_indexer_iface_reg("cache_indexer");
 
-This single line makes ``interface_registry::create("cache_listener", builder, parent)``
-work.  The string ``"cache_listener"`` is what you use as the ``"module"`` key in
-the JSON config.
+This runs at static-initialization time and makes
+``interface_registry::create("cache_indexer", builder, parent)`` available to the
+explicit environment.  The string ``"cache_indexer"`` is exactly what you will use
+as the ``"module"`` key in the JSON config.
 
-Step 3: Write an Implementation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Step 3: Hook the Interface into the Parent
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Create ``modules/hit_counter/hit_counter.h``:
+An interface with no consumer does nothing.  The cache needs to construct the
+indexer submodule from its builder and consult it on every set lookup.  Two
+surgical edits to ``CACHE`` are required.
+
+First, in ``inc/cache.h``, store an indexer pointer and populate it in the
+cache constructor from the builder's submodules.  We treat the indexer as a
+*required* submodule: every cache must declare at least one ``cache_indexer``
+child in its JSON config.
+
+.. code-block:: cpp
+
+    // In the CACHE class body, alongside pref_module_pimpl / repl_module_pimpl:
+    champsim::modules::cache_indexer* indexer_module_pimpl = nullptr;
+
+    // In the CACHE constructor, alongside the existing submodule loops.
+    // get_submodules defaults to optional=false, so a missing
+    // "cache_indexer" child causes the simulator to exit with an error
+    // rather than silently producing an unindexed cache.
+    for (const auto& sub : builder.get_submodules("cache_indexer"))
+      indexer_module_pimpl = champsim::modules::cache_indexer::create_instance(
+          sub, static_cast<champsim::modules::cache_module*>(this));
+
+The loop form is intentional.  ``get_submodules`` returns a vector; writing it
+as a loop handles any-N submodules uniformly.  For this interface we keep only
+the last one because a cache has a single address → set mapping; another
+interface (e.g. a listener) would ``push_back`` into a vector here instead.
+If you wanted to permit caches without an indexer, you would pass
+``optional=true`` as the second argument — ``get_submodules`` would then return
+an empty vector instead of erroring out, and the loop body would simply not
+run.
+
+Second, in ``src/cache.cc``, route ``get_set_index`` through the indexer:
+
+.. code-block:: cpp
+
+    long CACHE::get_set_index(champsim::address address) const
+    {
+      long idx = indexer_module_pimpl->compute_set_index(address);
+      assert(idx >= 0 && static_cast<uint32_t>(idx) < NUM_SET);
+      return idx;
+    }
+
+Step 4: Write Implementations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Implementations live under ``indexer/<model_name>/`` so the Makefile can discover
+them.  (Add ``indexer`` to the ``find`` list in the Makefile's
+``module_sources`` line alongside ``branch btb prefetcher replacement`` — the
+build system rules follow the same pattern as the other module directories.)
+
+The default bit-slice, made explicit (``indexer/bit_slice/bit_slice.h``):
 
 .. code-block:: cpp
     :linenos:
 
-    #ifndef HIT_COUNTER_H
-    #define HIT_COUNTER_H
+    #ifndef BIT_SLICE_INDEXER_H
+    #define BIT_SLICE_INDEXER_H
 
-    #include <cstdint>
-    #include "cache_listener.h"
+    #include "cache_indexer.h"
+    #include "champsim.h"
 
-    // -------------------------------------------------------------------------
-    // hit_counter — A simple cache_listener that counts hits and misses.
-    //
-    // Demonstrates how to implement a custom interface.  The pattern is
-    // identical to prefetchers and replacement policies:
-    //   1. Inherit from the interface
-    //   2. Override all pure virtual methods
-    //   3. Accept a ModuleBuilder constructor
-    //   4. Register with register_module
-    // -------------------------------------------------------------------------
-    struct hit_counter : public champsim::modules::cache_listener {
+    struct bit_slice : public champsim::modules::cache_indexer {
+      long num_sets;
+      champsim::data::bits offset_bits;
 
-        uint64_t hits = 0;
-        uint64_t misses = 0;
-
-        hit_counter(champsim::modules::ModuleBuilder /*builder*/) {}
-
-        void on_initialize() override {}
-
-        void on_hit(champsim::address /*addr*/, champsim::address /*ip*/,
-                    long /*set*/, long /*way*/, access_type /*type*/) override {
-            ++hits;
-        }
-
-        void on_miss(champsim::address /*addr*/, champsim::address /*ip*/,
-                     access_type /*type*/) override {
-            ++misses;
-        }
-
-        void on_final_stats() override {
-            fmt::print("HIT_COUNTER: hits={} misses={} rate={:.4f}\n",
-                       hits, misses,
-                       static_cast<double>(hits) / (hits + misses));
-        }
+      bit_slice(champsim::modules::ModuleBuilder builder);
+      long compute_set_index(champsim::address addr) override;
     };
 
     #endif
 
-**Implementation file** (``modules/hit_counter/hit_counter.cc``):
+``indexer/bit_slice/bit_slice.cc``:
 
 .. code-block:: cpp
+    :linenos:
 
-    #include "hit_counter.h"
+    #include "bit_slice.h"
+    #include "cache.h"
 
-    // Register "hit_counter" as an implementation of cache_listener.
-    champsim::modules::cache_listener::register_module<hit_counter>
-        hit_counter_reg("hit_counter");
+    // Register under the model name "bit_slice".
+    champsim::modules::cache_indexer::register_module<bit_slice>
+        bit_slice_reg("bit_slice");
 
-Step 4: Wire It Up in the Parent Module
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    bit_slice::bit_slice(champsim::modules::ModuleBuilder builder)
+      : num_sets(static_cast<long>(
+          builder.get_parent<champsim::modules::cache_module>()->num_sets())),
+        offset_bits(
+          builder.get_parent<champsim::modules::cache_module>()->get_offset_bits())
+    {}
 
-For your interface to actually receive events, the parent module (in this case, the
-``CACHE`` class) needs to call your methods at the appropriate times.
-
-In the cache implementation, you would:
-
-1. Store a vector of ``cache_listener*`` obtained from the builder's submodules
-2. Call each listener's methods at the appropriate points
-
-.. code-block:: cpp
-
-    // In the CACHE constructor or initialization:
-    for (auto& sub : builder.get_submodules("cache_listener")) {
-        auto* listener = cache_listener::create_instance(sub, this);
-        listeners_.push_back(listener);
+    long bit_slice::compute_set_index(champsim::address addr)
+    {
+      // Canonical bit-slice: use champsim::address::slice with a
+      // dynamic_extent describing [offset_bits, offset_bits + lg2(num_sets)),
+      // then unwrap the strongly-typed slice with .to<long>(). This is the
+      // same expression CACHE::get_set_index uses for its built-in fallback.
+      return addr
+          .slice(champsim::dynamic_extent{offset_bits, champsim::lg2(num_sets)})
+          .to<long>();
     }
 
-    // In the cache hit path:
-    for (auto* l : listeners_) l->on_hit(addr, ip, set, way, type);
+A one-line XOR-folding hash that reduces conflict misses on power-of-two strides
+(``indexer/xor_hash/xor_hash.cc``):
 
-    // In the cache miss path:
-    for (auto* l : listeners_) l->on_miss(addr, ip, type);
+.. code-block:: cpp
+    :linenos:
+
+    #include "xor_hash.h"
+    #include "cache.h"
+
+    champsim::modules::cache_indexer::register_module<xor_hash>
+        xor_hash_reg("xor_hash");
+
+    xor_hash::xor_hash(champsim::modules::ModuleBuilder builder)
+      : num_sets(static_cast<long>(
+          builder.get_parent<champsim::modules::cache_module>()->num_sets())),
+        index_bits(champsim::lg2(num_sets)),
+        offset_bits(
+          builder.get_parent<champsim::modules::cache_module>()->get_offset_bits())
+    {}
+
+    long xor_hash::compute_set_index(champsim::address addr)
+    {
+      // Fold two adjacent index_bits-wide fields of the block address
+      // together. Each field is pulled with champsim::address::slice + a
+      // dynamic_extent whose second argument is the slice width in bits, so
+      // we stay inside the strongly-typed address API.
+      const auto low_bits  = champsim::dynamic_extent{offset_bits, index_bits};
+      const auto high_bits = champsim::dynamic_extent{
+          offset_bits + champsim::data::bits{index_bits}, index_bits};
+      const auto low  = addr.slice(low_bits).to<unsigned long>();
+      const auto high = addr.slice(high_bits).to<unsigned long>();
+      return static_cast<long>(low ^ high);
+    }
+
+.. note::
+
+   Prefer ``champsim::address::slice`` (combined with ``champsim::dynamic_extent``
+   or one of the named extents in ``inc/extent.h``) over manually converting the
+   address to a ``uint64_t`` and shifting.  The slice API keeps the offset and
+   width checked by the type system, composes with ``champsim::address::splice``
+   and ``slice_upper`` for more complex hashes, and — importantly — is what the
+   rest of ChampSim uses, so your indexer reads like the surrounding code.
 
 Step 5: Configure It
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-In the explicit config, your listener appears as a child of a cache module::
+In the explicit config, the indexer is a child of a cache module, right next to
+the prefetcher and replacement submodules::
 
     {
-        "name": "cpu0_L2C",
-        "module": "cache",
-        "model": "DEFAULT_CACHE",
-        "children": [
-            {"name": "cpu0_L2C_prefetcher", "module": "prefetcher", "model": "no"},
-            {"name": "cpu0_L2C_replacement", "module": "replacement", "model": "lru"},
-            {"name": "cpu0_L2C_listener", "module": "cache_listener", "model": "hit_counter"}
-        ]
+      "name": "LLC", "module": "cache", "model": "DEFAULT_CACHE",
+      "num_sets": 2048, "num_ways": 16,
+      "children": [
+        {"name": "llc_pf",   "module": "prefetcher",    "model": "no"},
+        {"name": "llc_repl", "module": "replacement",   "model": "lru"},
+        {"name": "llc_idx",  "module": "cache_indexer", "model": "xor_hash"}
+      ]
     }
+
+Run ``bin/champsim --config my_config.json --dump`` and confirm the line::
+
+    [llc_idx] created_module = xor_hash (set)
+
+appears before the cache itself is constructed.  If the ``cache_indexer``
+child is omitted from the config, ``get_submodules("cache_indexer")`` exits
+with a ``required submodules of interface cache_indexer not found`` error,
+making the missing wiring impossible to overlook.
 
 Summary
 ^^^^^^^^^^
 
-Creating a new interface requires four pieces:
+Defining a new interface is four pieces:
 
-1. **Interface class** — inherits ``module_base<YourInterface, ParentType>``
-2. **Interface registration** — ``register_interface("name")`` in a ``.cc`` file
-3. **Implementation class(es)** — inherit from your interface, register with
-   ``register_module<Impl>("model_name")``
-4. **Parent integration** — the parent module creates instances from submodule builders
-   and calls the interface methods at the right times
+1. **Interface class** inheriting ``module_base<YourInterface, ParentType>``.
+2. **Interface registration** via ``register_interface("name")`` in a ``.cc`` file.
+3. **Implementation class(es)** inheriting the interface, registered with
+   ``register_module<Impl>("model_name")``.
+4. **Parent integration** — the parent module pulls submodule builders out via
+   ``builder.get_submodules("name")``, creates instances with
+   ``YourInterface::create_instance(sub, this)``, and calls the virtual methods at
+   the relevant points.
 
-The ``module_base`` template provides all the factory and registration infrastructure.
-You just define the virtual methods and the parent integration.
+The ``module_base`` template provides all the factory and registration
+infrastructure.  You define the virtual methods and the integration point inside
+the parent module.
 
 .. _Tutorial_Migration:
 
@@ -966,3 +1045,187 @@ Example diff for a prefetcher::
         // ... all other pure virtuals stubbed or implemented
     };
     champsim::modules::prefetcher::register_module<my_pref>("my_pref");
+
+.. _Tutorial_Modernization:
+
+------------------------------------------
+Part 8: Modernizing the Default Config
+------------------------------------------
+
+The default ``champsim_config.json`` shipped with the repository is a
+documentation artifact.  Its own header says so:
+
+.. code-block:: json
+
+    "_description": "Sample/documentation config. Does not represent a
+     reasonable system; intended only to illustrate config file structure."
+
+Running experiments against it and reporting the results as representative of a
+contemporary CPU is a common source of bad numbers.  The defaults were
+reasonable in the mid-2010s; they are not in 2026.  This section walks through
+upgrading the default config to something closer to an Intel **Redwood Cove**
+(Meteor Lake / Granite Rapids P-core) system and explains what each change
+buys you.  The approximate specs we are targeting:
+
+* ~5 GHz core clock, ~6-wide front-end, ~6-wide allocate, 12-wide (MATH + LOAD + STORE) execute.
+* 512-entry ROB, ~280-entry INT / ~332-entry FP register files, ~205-entry scheduler,
+  ~192-entry load queue, ~114-entry store queue.
+* 48 KB 12-way L1D, ~5 cycle load-to-use at 5 GHz.
+* 64 KB 8-way L1I (doubled vs. Golden Cove — one of Redwood Cove's visible
+  front-end changes).
+* 2 MB private L2 (client parts; Granite Rapids doubles this to 4 MB).
+* ~3 MB / core 12-way shared L3 slice (client).
+* DDR5-5600, 2 channels (client) — Granite Rapids uses DDR5-6400 / MCR-DIMM.
+
+The goal here is not perfect fidelity (ChampSim's core model is abstract,
+and does not model a specific ISA or microarchitecture) but **realistic values** 
+so that replacement/prefetch comparisons are not dominated by
+obvious model artifacts (e.g. a ROB that empties in a single cycle).
+
+Where to Direct Attention
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When cloning ``champsim_config.json`` into an experimental config, audit these
+parameters in roughly decreasing order of impact:
+
+1. **Core width and window sizes** (``rob_size``, ``lq_size``, ``sq_size``,
+   ``scheduler_size``, ``*_width``).  The default ROB of 352 and LQ of 128 are
+   usably close to Redwood Cove, but the 4-wide execute / 2-wide LQ are too
+   narrow for a modern OoO core and silently gate MLP.
+2. **L1D latency and size**.  The default ``5/64/12`` is fine; double-check it
+   matches the accuracy you want.
+3. **L2 size**.  The default 512 KB / 8-way L2 is ~4× smaller than Redwood
+   Cove's 2 MB / 16-way private L2 (client parts).  Undersized L2s push more
+   traffic to LLC and DRAM and distort prefetcher evaluations.
+4. **LLC size**.  The default 2048 sets × 16 ways × 64 B = **2 MB**.  Modern
+   server parts are 30 MB+; client parts are 30 MB+.  Per-core LLC slices are
+   in the 1.5–3 MB range.  Running with 2 MB shared LLC for any benchmark with
+   a working set larger than ~1 MB is a DRAM-bound experiment by construction.
+5. **DRAM speed**.  The default ``data_rate: 3200`` (DDR4-3200) is two
+   generations behind the DDR5-5600 (client) / DDR5-6400 + MCR-DIMM (server)
+   that ships with Redwood Cove systems.
+6. **Prefetchers**.  The defaults are ``no`` at L1D/L1I and ``spp_dev`` at L2C.
+   This asymmetry is a deliberate documentation choice; for a realistic
+   comparison baseline you typically want ``ip_stride`` or ``va_ampm_lite``
+   at **L1D** (both are virtually-addressed L1D prefetchers in this repo —
+   ``va_ampm_lite`` is page-region AMPM on VA), ``next_line`` at L1I, and
+   ``spp_dev`` at L2C.
+7. **Memory timings** (``nCAS``, ``nRCD``, ``nRP``, ``nRAS``).  The defaults
+   target DDR4; DDR5 timings are different in absolute cycles.
+8. **MSHR sizes**.  L1D MSHR = 16 is acceptable; Redwood Cove sustains
+   ~16 outstanding demand misses. However, L2C MSHR = 32 is undersized.
+   Redwood Cove has 64 MSHRs in its L2C. An undersized MSHR caps effective MLP.
+
+
+Step 1: Clone and Comment
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Copy ``champsim_config.json`` to ``redwood_cove.json``.  Immediately replace the
+``_description`` field with a real citation of the specs you are targeting and
+the date you snapshotted them — future-you will thank you.
+
+Step 2: Core Parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: json
+
+    "ooo_cpu": [{
+      "frequency": 5000,
+      "ifetch_buffer_size": 128,
+      "decode_buffer_size": 64,
+      "dispatch_buffer_size": 64,
+      "register_file_size": 192,
+      "rob_size": 512,
+      "lq_size": 192,
+      "sq_size": 114,
+      "fetch_width": 6,
+      "decode_width": 6,
+      "dispatch_width": 6,
+      "execute_width": 12,
+      "lq_width": 3,
+      "sq_width": 2,
+      "retire_width": 8,
+      "mispredict_penalty": 1,
+      "scheduler_size": 205,
+      "decode_latency": 1,
+      "dispatch_latency": 1,
+      "schedule_latency": 0,
+      "execute_latency": 0,
+      "branch_predictor": "hashed_perceptron",
+      "btb": "basic_btb"
+    }]
+
+
+Step 3: Cache Hierarchy
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: json
+
+    "L1I": { "sets": 128, "ways": 8,  "mshr_size": 16, "latency": 3,
+             "prefetcher": "next_line" },
+    "L1D": { "sets": 64,  "ways": 12, "mshr_size": 16, "latency": 5,
+             "prefetcher": "ip_stride" },
+    "L2C": { "sets": 2048, "ways": 16, "mshr_size": 64, "latency": 14,
+             "prefetcher": "spp_dev" },
+    "LLC": { "sets": 4096, "ways": 12, "mshr_size": 96, "latency": 40,
+             "prefetcher": "no", "replacement": "srrip" }
+
+Sizes: 64 KB / 48 KB / 2 MB / ~3 MB (per core) with 64 B lines.
+Latencies are in **cache cycles**.  Note that ChampSim's single-LLC
+model does not distinguish slice access time from interconnect hops; ``40`` is
+the aggregate LLC hit latency in LLC cycles.
+
+The defaults omit ``replacement`` at all levels except LLC; for a modern
+baseline, ``srrip`` at LLC is a reasonable starting point.  Leave L1/L2 at the
+built-in LRU by omitting the key.
+
+Step 4: DRAM
+^^^^^^^^^^^^^^^
+
+.. code-block:: json
+
+    "physical_memory": {
+      "data_rate": 5600,
+      "channels": 2,
+      "ranks": 1,
+      "bankgroups": 8,
+      "banks": 4,
+      "bank_rows": 65536,
+      "bank_columns": 2048,
+      "channel_width": 4,
+      "wq_size": 96,
+      "rq_size": 96,
+      "nCAS": 40,
+      "nRCD": 40,
+      "nRP": 40,
+      "nRAS": 88,
+      "refresh_period": 32,
+      "refreshes_per_period": 8192
+    }
+
+The timings above are approximate DDR5-5600 values scaled into ChampSim's
+DRAM-cycle unit.  Two channels doubles the achievable BW; many single-channel
+ChampSim runs are silently bottlenecked there.
+
+Step 5: Validate with --dump
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Every time you change a config parameter, confirm it took effect:
+
+.. code-block:: bash
+
+    bin/champsim --config redwood_cove.json --dump | less
+
+Look for ``(default)`` tags — those indicate a parameter you thought you set
+but didn't (common after renames or typos).
+
+Step 6: Why the Defaults Are What They Are
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The shipped defaults are optimized for **readability of the config file**, not
+realism.  Small numbers (8-way, 64-set) make it obvious which field is which
+when you're learning the format.
+
+When in doubt, start from ``champsim_config.json`` for **structure**, refer
+to **published values** for your config, and ``--dump`` after every edit to
+confirm the settings landed where you expected.

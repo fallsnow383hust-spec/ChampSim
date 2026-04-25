@@ -63,7 +63,9 @@ inline champsim::modules::ModuleBuilder default_core()
         .add_parameter("l1d_bandwidth", champsim::bandwidth::maximum_type{1})
         .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(nullptr))
         .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(nullptr))
-        .add_parameter("l1i", static_cast<champsim::modules::cache_module*>(nullptr));
+        .add_parameter("l1i", static_cast<champsim::modules::cache_module*>(nullptr))
+        .add_submodule("branch_predictor", champsim::modules::ModuleBuilder{"default_bp", "bimodal"})
+        .add_submodule("btb", champsim::modules::ModuleBuilder{"default_btb", "basic_btb"});
 }
 
 // CACHE parameters - types must exactly match get_parameter<T>() calls in cache.h

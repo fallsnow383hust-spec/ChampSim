@@ -117,7 +117,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   }
 
   // Construct the environment via the module system
-  std::string env_model = config_json.value("environment", std::string("DEFAULT_ENVIRONMENT"));
+  std::string env_model = config_json.value("environment", std::string("LEGACY_ENVIRONMENT"));
   // Set globals from the environment
   NUM_CPUS = config_json.value("num_cores", 1u); // default to 1 CPU if not specified, needed for trace validation
   BLOCK_SIZE = config_json.value("block_size", 64u);

@@ -261,7 +261,7 @@ public:
         prefetch_as_load(builder.get_parameter<bool>("prefetch_as_load")), match_offset_bits(builder.get_parameter<bool>("match_offset_bits")), virtual_prefetch(builder.get_parameter<bool>("virtual_prefetch")), pref_activate_mask(builder.get_parameter<std::vector<access_type>>("pref_activate_mask"))
   {
     // Construct prefetcher submodules
-    for (const auto& sub : builder.get_submodules("prefetcher"))
+    for (const auto& sub : builder.get_submodules("prefetcher", true))
       pref_module_pimpl.push_back(champsim::modules::prefetcher::create_instance(sub, static_cast<champsim::modules::cache_module*>(this)));
 
     // Construct replacement submodules

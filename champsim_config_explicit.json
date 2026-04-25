@@ -1,6 +1,6 @@
 {
   "_description": "Sample/documentation explicit config. Does not represent a reasonable system; intended only to illustrate config file structure.",
-  "environment": "EXPLICIT_ENVIRONMENT",
+  "environment": "ENVIRONMENT",
   "block_size": 64,
   "page_size": 4096,
   "num_cores": 1,

@@ -19,7 +19,7 @@ json load_config(const std::string& filename) {
 }
 
 champsim::modules::environment_module* make_explicit_env(const json& config) {
-  auto builder = ModuleBuilder{"test_explicit_env", "EXPLICIT_ENVIRONMENT"};
+  auto builder = ModuleBuilder{"test_explicit_env", "ENVIRONMENT"};
   builder.add_parameter("config_json", config);
   return champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
 }
@@ -268,7 +268,7 @@ SCENARIO("Explicit environment dump mode does not crash") {
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
     auto config = load_config("explicit-1core.json");
-    auto builder = ModuleBuilder{"dump_explicit_env", "EXPLICIT_ENVIRONMENT"};
+    auto builder = ModuleBuilder{"dump_explicit_env", "ENVIRONMENT"};
     builder.add_parameter("config_json", config);
 
     THEN("Construction succeeds and dump log is non-empty") {
@@ -287,7 +287,7 @@ SCENARIO("Explicit environment dump log contains expected modules and parameters
     ModuleBuilder::clear_dump_log();
     ModuleBuilder::set_dump_enabled(true);
     auto config = load_config("explicit-1core.json");
-    auto builder = ModuleBuilder{"dump_explicit", "EXPLICIT_ENVIRONMENT"};
+    auto builder = ModuleBuilder{"dump_explicit", "ENVIRONMENT"};
     builder.add_parameter("config_json", config);
     champsim::modules::environment_module::create_instance(builder, static_cast<champsim::modules::environment_module*>(nullptr));
     auto& log = ModuleBuilder::get_dump_log();

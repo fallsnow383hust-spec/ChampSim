@@ -54,7 +54,7 @@ The number of warmup and simulation instructions given will be the number of ins
 
 ChampSim supports two configuration formats:
 - **Legacy format** (`champsim_config.json`): A shorthand format that auto-generates the full module hierarchy from high-level keys like `"branch_predictor"`, `"L1D"`, `"num_cores"`, etc.
-- **Explicit format** (`champsim_config_explicit.json`): Gives full control over every module in the hierarchy. Set `"environment": "EXPLICIT_ENVIRONMENT"` and define all modules in a `"children"` array. See the [documentation](https://champsim.github.io/ChampSim/master/Explicit-configuration-format.html) for details.
+- **Explicit format** (`champsim_config_explicit.json`): Gives full control over every module in the hierarchy. Set `"environment": "ENVIRONMENT"` and define all modules in a `"children"` array. See the [documentation](https://champsim.github.io/ChampSim/master/Explicit-configuration-format.html) for details.
 
 # Add your own branch predictor, data prefetchers, and replacement policy
 

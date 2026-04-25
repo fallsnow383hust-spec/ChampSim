@@ -50,7 +50,7 @@ champsim::chrono::picoseconds parse_frequency_string(const std::string& s) {
   else if (suffix == "G")  multiplier = 1e9;
   else if (suffix == "T")  multiplier = 1e12;
   else {
-    fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: unknown frequency suffix '{}' in '{}'\n", suffix, s);
+    fmt::print("[ENVIRONMENT] ERROR: unknown frequency suffix '{}' in '{}'\n", suffix, s);
     std::exit(-1);
   }
   auto ps = static_cast<int64_t>(std::round(1e12 / (value * multiplier)));
@@ -72,7 +72,7 @@ std::any parse_time_string(const std::string& s) {
     return champsim::chrono::milliseconds{int_val};
   else if (suffix == "s")
     return champsim::chrono::seconds{int_val};
-  fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: unknown time suffix '{}' in '{}'\n", suffix, s);
+  fmt::print("[ENVIRONMENT] ERROR: unknown time suffix '{}' in '{}'\n", suffix, s);
   std::exit(-1);
 }
 
@@ -92,7 +92,7 @@ champsim::data::bytes parse_bytes_string(const std::string& s) {
   if (suffix == "M") return champsim::data::bytes{int_val * 1000000LL};
   if (suffix == "G") return champsim::data::bytes{int_val * 1000000000LL};
   if (suffix == "T") return champsim::data::bytes{int_val * 1000000000000LL};
-  fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: unknown bytes suffix '{}' in '{}'\n", suffix, s);
+  fmt::print("[ENVIRONMENT] ERROR: unknown bytes suffix '{}' in '{}'\n", suffix, s);
   std::exit(-1);
 }
 
@@ -104,7 +104,7 @@ champsim::data::bits parse_bits_string(const std::string& s) {
   if (suffix == "K")  return champsim::data::bits{int_val * 1000ULL};
   if (suffix == "M")  return champsim::data::bits{int_val * 1000000ULL};
   if (suffix == "G")  return champsim::data::bits{int_val * 1000000000ULL};
-  fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: unknown bits suffix '{}' in '{}'\n", suffix, s);
+  fmt::print("[ENVIRONMENT] ERROR: unknown bits suffix '{}' in '{}'\n", suffix, s);
   std::exit(-1);
 }
 
@@ -186,7 +186,7 @@ void populate_builder(const json& node, ModuleBuilder& builder,
       const auto& rn = *ref;
       auto mit = modules_by_name.find(rn);
       if (mit == modules_by_name.end()) {
-        fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: @-reference '{}' not found (used in '{}' param '{}')\n", rn, name, key);
+        fmt::print("[ENVIRONMENT] ERROR: @-reference '{}' not found (used in '{}' param '{}')\n", rn, name, key);
         std::exit(-1);
       }
       builder.add_raw_parameter(key, mit->second);
@@ -197,14 +197,14 @@ void populate_builder(const json& node, ModuleBuilder& builder,
         auto rn = *try_parse_ref(elem.get<std::string>());
         auto mit = modules_by_name.find(rn);
         if (mit == modules_by_name.end()) {
-          fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: @-reference '{}' not found (in array param '{}' of '{}')\n", rn, key, name);
+          fmt::print("[ENVIRONMENT] ERROR: @-reference '{}' not found (in array param '{}' of '{}')\n", rn, key, name);
           std::exit(-1);
         }
         std::string curr_iface = module_interfaces.at(rn);
         if (ref_iface.empty()) {
           ref_iface = curr_iface;
         } else if (curr_iface != ref_iface) {
-          fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: mixed interface types in array '{}' of '{}': expected '{}', got '{}' for '{}'\n",
+          fmt::print("[ENVIRONMENT] ERROR: mixed interface types in array '{}' of '{}': expected '{}', got '{}' for '{}'\n",
                      key, name, ref_iface, curr_iface, rn);
           std::exit(-1);
         }
@@ -251,7 +251,7 @@ void populate_builder(const json& node, ModuleBuilder& builder,
   if (node.contains("children")) {
     for (auto& sub : node["children"]) {
       if (!sub.contains("name") || !sub.contains("module") || !sub.contains("model")) {
-        fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: submodule of '{}' missing 'name', 'module', or 'model'\n", name);
+        fmt::print("[ENVIRONMENT] ERROR: submodule of '{}' missing 'name', 'module', or 'model'\n", name);
         std::exit(-1);
       }
       std::string sub_iface = sub["module"].get<std::string>();
@@ -267,8 +267,8 @@ void populate_builder(const json& node, ModuleBuilder& builder,
 
 } // anonymous namespace
 
-// Register as "EXPLICIT_ENVIRONMENT"
-static environment_module::register_module<champsim::environment> explicit_env_register("EXPLICIT_ENVIRONMENT");
+// Register as "ENVIRONMENT"
+static environment_module::register_module<champsim::environment> explicit_env_register("ENVIRONMENT");
 
 champsim::environment::environment(ModuleBuilder builder)
 {
@@ -279,7 +279,7 @@ champsim::environment::environment(ModuleBuilder builder)
   page_size_ = config.value("page_size", 4096u);
 
   if (!config.contains("children")) {
-    fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: config must contain a 'children' array\n");
+    fmt::print("[ENVIRONMENT] ERROR: config must contain a 'children' array\n");
     std::exit(-1);
   }
 
@@ -287,7 +287,7 @@ champsim::environment::environment(ModuleBuilder builder)
 
   for (auto& child : children) {
     if (!child.contains("name") || !child.contains("module") || !child.contains("model")) {
-      fmt::print("[EXPLICIT_ENVIRONMENT] ERROR: each child must have 'name', 'module', and 'model'\n");
+      fmt::print("[ENVIRONMENT] ERROR: each child must have 'name', 'module', and 'model'\n");
       std::exit(-1);
     }
 

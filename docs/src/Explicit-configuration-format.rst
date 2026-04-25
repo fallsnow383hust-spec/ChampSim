@@ -9,7 +9,7 @@ hierarchy. Unlike the :ref:`legacy format <Creating_Config>`, which uses shortha
 and auto-generates modules, the explicit format requires you to define every module
 (channels, caches, cores, DRAM, etc.) individually.
 
-To use the explicit format, set ``"environment": "EXPLICIT_ENVIRONMENT"`` at the root of
+To use the explicit format, set ``"environment": "ENVIRONMENT"`` at the root of
 your JSON configuration file. All modules are defined in a flat ``"children"`` array.
 
 ----------------------------------
@@ -19,7 +19,7 @@ Basic Structure
 An explicit configuration file has the following top-level structure::
 
     {
-        "environment": "EXPLICIT_ENVIRONMENT",
+        "environment": "ENVIRONMENT",
         "block_size": 64,
         "page_size": 4096,
         "num_cores": 1,
@@ -181,7 +181,7 @@ The following is a stripped-down explicit config showing the essential structure
 all default modules::
 
     {
-        "environment": "EXPLICIT_ENVIRONMENT",
+        "environment": "ENVIRONMENT",
         "block_size": 64,
         "page_size": 4096,
         "num_cores": 1,
