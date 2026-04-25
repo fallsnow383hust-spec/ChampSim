@@ -125,6 +125,15 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   LOG2_BLOCK_SIZE = champsim::lg2(BLOCK_SIZE);
   LOG2_PAGE_SIZE = champsim::lg2(PAGE_SIZE);
 
+  // Apply the heartbeat printout frequency from the config (root-level
+  // ``heartbeat_frequency``).  This is environment-agnostic: both the
+  // ENVIRONMENT and LEGACY_ENVIRONMENT paths share the same global Heartbeat
+  // listener defined in inc/event_listeners.h, so the field is honored
+  // regardless of which environment model the config selects.
+  if (config_json.contains("heartbeat_frequency")) {
+    std::get<Heartbeat>(listeners).cycles_between_printouts = config_json.value("heartbeat_frequency", uint64_t{10000000});
+  }
+
   auto env_builder = champsim::modules::ModuleBuilder("environment", env_model)
     .add_parameter("config_json", config_json);
   champsim::modules::ModuleBuilder::set_dump_enabled(knob_dump);

@@ -88,7 +88,15 @@ inline void handle_event<Event::RETIRE>(Heartbeat* hb, uint32_t& cpu, std::deque
                "Heartbeat CPU {} instructions: {} cycles: {} heartbeat IPC: {:.4} cumulative IPC: {:.4} (Simulation time: {:%H hr %M min %S sec})\n", cpu,
                hb->num_retired[cpu], current_cycles, heartbeat_instr / heartbeat_cycle, phase_instr / phase_cycle, elapsed_time());
 
-    hb->num_retired_last_printout[cpu] = hb->num_retired[cpu];
+    // Advance the heartbeat baseline by exact multiples of
+    // ``cycles_between_printouts`` rather than snapping to the current
+    // retired count.  When more than one instruction retires in the same
+    // cycle, ``num_retired`` can overshoot the threshold; snapping would
+    // accumulate that overshoot every heartbeat and permanently displace
+    // when subsequent heartbeats fire.
+    auto overshoot = hb->num_retired[cpu] - hb->num_retired_last_printout[cpu];
+    auto whole_periods = overshoot / hb->cycles_between_printouts;
+    hb->num_retired_last_printout[cpu] += whole_periods * hb->cycles_between_printouts;
     hb->cycles_last_printout[cpu] = current_cycles;
   }
 }
