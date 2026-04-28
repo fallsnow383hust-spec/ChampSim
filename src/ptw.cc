@@ -37,9 +37,25 @@ PageTableWalker::PageTableWalker(champsim::modules::ModuleBuilder builder)
 {
   auto local_pscl_dims = builder.get_parameter<std::vector<std::array<uint32_t, 3>>>("pscl_dims");
   auto pt_levels = vmem->get_pt_levels();
+  // Valid PSCL levels are [2, pt_levels]. Level 1 is never cached (handle_fill
+  // at level 1 produces the final va_to_pa lookup, not another intermediate
+  // step). Levels > pt_levels don't exist in this table.
   local_pscl_dims.erase(std::remove_if(std::begin(local_pscl_dims), std::end(local_pscl_dims),
-                                        [pt_levels](auto x) { return std::get<0>(x) > pt_levels; }),
+                                        [pt_levels](auto x) { return std::get<0>(x) > pt_levels || std::get<0>(x) < 2; }),
                          std::end(local_pscl_dims));
+
+  // Ensure every level in [2, pt_levels] has a PSCL entry. Missing levels get
+  // a 0-way stub that always misses and silently ignores fills, preserving the
+  // invariant std::size(pscl) == pt_levels - 1 so the walk always starts at
+  // the correct level and no walk steps are silently skipped.
+  for (std::size_t level = 2; level <= pt_levels; ++level) {
+    bool configured = std::any_of(std::begin(local_pscl_dims), std::end(local_pscl_dims),
+                                  [level](const auto& x) { return std::get<0>(x) == level; });
+    if (!configured) {
+      local_pscl_dims.push_back({static_cast<uint32_t>(level), 1, 0});
+    }
+  }
+
   std::sort(std::begin(local_pscl_dims), std::end(local_pscl_dims), std::greater{});
 
   for (auto [level, sets, ways] : local_pscl_dims) {
