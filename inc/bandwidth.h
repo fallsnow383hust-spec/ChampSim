@@ -86,11 +86,8 @@ public:
   explicit bandwidth(maximum_type maximum);
 };
 
-inline auto format_as(champsim::bandwidth::maximum_type val) {
-  return static_cast<long int>(val);
-}
+inline auto format_as(champsim::bandwidth::maximum_type val) { return static_cast<long int>(val); }
 
 } // namespace champsim
-
 
 #endif

@@ -169,15 +169,9 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
   return stop_fetch;
 }
 
-void O3_CPU::push_instruction(ooo_model_instr instr)
-{
-  input_queue.push_back(instr);
-}
+void O3_CPU::push_instruction(ooo_model_instr instr) { input_queue.push_back(instr); }
 
-std::size_t O3_CPU::instructions_requested()
-{
-  return IN_QUEUE_SIZE - static_cast<long>(std::size(input_queue));
-}
+std::size_t O3_CPU::instructions_requested() { return IN_QUEUE_SIZE - static_cast<long>(std::size(input_queue)); }
 
 bool O3_CPU::do_init_instruction(ooo_model_instr& arch_instr)
 {
@@ -680,7 +674,8 @@ long O3_CPU::handle_memory_return()
   }
 
   auto l1d_it = std::begin(L1D_bus.lower_level->get_returned());
-  for (champsim::bandwidth l1d_bw{L1D_BANDWIDTH}; l1d_bw.has_remaining() && l1d_it != std::end(L1D_bus.lower_level->get_returned()); l1d_bw.consume(), ++l1d_it) {
+  for (champsim::bandwidth l1d_bw{L1D_BANDWIDTH}; l1d_bw.has_remaining() && l1d_it != std::end(L1D_bus.lower_level->get_returned());
+       l1d_bw.consume(), ++l1d_it) {
     for (auto& lq_entry : LQ) {
       if (lq_entry.has_value() && lq_entry->fetch_issued && champsim::block_number{lq_entry->virtual_address} == champsim::block_number{l1d_it->v_address}) {
         lq_entry->finish(std::begin(ROB), std::end(ROB));
@@ -724,31 +719,38 @@ long O3_CPU::retire_rob()
   return retire_count;
 }
 
-void O3_CPU::impl_initialize_branch_predictor() const { std::for_each(branch_module_pimpl.begin(),branch_module_pimpl.end(),[](const auto bp){bp->initialize_branch_predictor();});}
+void O3_CPU::impl_initialize_branch_predictor() const
+{
+  std::for_each(branch_module_pimpl.begin(), branch_module_pimpl.end(), [](const auto bp) { bp->initialize_branch_predictor(); });
+}
 
 void O3_CPU::impl_last_branch_result(champsim::address ip, champsim::address target, bool taken, uint8_t branch_type) const
 {
-  std::for_each(branch_module_pimpl.begin(),branch_module_pimpl.end(),[&](const auto bp){bp->last_branch_result(ip, target, taken, branch_type);});
+  std::for_each(branch_module_pimpl.begin(), branch_module_pimpl.end(), [&](const auto bp) { bp->last_branch_result(ip, target, taken, branch_type); });
 }
 
 bool O3_CPU::impl_predict_branch(champsim::address ip, champsim::address predicted_target, bool always_taken, uint8_t branch_type) const
 {
   bool predicted = false;
-  std::for_each(branch_module_pimpl.begin(),branch_module_pimpl.end(),[&](const auto bp){predicted |= bp->predict_branch(ip, predicted_target, always_taken, branch_type);});
+  std::for_each(branch_module_pimpl.begin(), branch_module_pimpl.end(),
+                [&](const auto bp) { predicted |= bp->predict_branch(ip, predicted_target, always_taken, branch_type); });
   return predicted;
 }
 
-void O3_CPU::impl_initialize_btb() const { std::for_each(btb_module_pimpl.begin(),btb_module_pimpl.end(),[](const auto btb){btb->initialize_btb();}); }
+void O3_CPU::impl_initialize_btb() const
+{
+  std::for_each(btb_module_pimpl.begin(), btb_module_pimpl.end(), [](const auto btb) { btb->initialize_btb(); });
+}
 
 void O3_CPU::impl_update_btb(champsim::address ip, champsim::address predicted_target, bool taken, uint8_t branch_type) const
 {
-  std::for_each(btb_module_pimpl.begin(),btb_module_pimpl.end(),[&](const auto btb){btb->update_btb(ip, predicted_target, taken, branch_type);});
+  std::for_each(btb_module_pimpl.begin(), btb_module_pimpl.end(), [&](const auto btb) { btb->update_btb(ip, predicted_target, taken, branch_type); });
 }
 
 std::pair<champsim::address, bool> O3_CPU::impl_btb_prediction(champsim::address ip, uint8_t branch_type) const
 {
   std::pair<champsim::address, bool> predict_pair{};
-  std::for_each(btb_module_pimpl.begin(),btb_module_pimpl.end(),[&](const auto btb){predict_pair = btb->btb_prediction(ip, branch_type);});
+  std::for_each(btb_module_pimpl.begin(), btb_module_pimpl.end(), [&](const auto btb) { predict_pair = btb->btb_prediction(ip, branch_type); });
   return predict_pair;
 }
 

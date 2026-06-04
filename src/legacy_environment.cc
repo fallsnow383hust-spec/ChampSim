@@ -16,7 +16,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
 #include <fmt/core.h>
 #include <nlohmann/json.hpp>
 
@@ -28,28 +27,34 @@
 using json = nlohmann::json;
 using namespace champsim::modules;
 
-namespace {
+namespace
+{
 
 // Helper: convert frequency in MHz to clock period in picoseconds
-int64_t freq_to_period(double freq_mhz) {
-  return static_cast<int64_t>(1000000.0 / freq_mhz);
-}
+int64_t freq_to_period(double freq_mhz) { return static_cast<int64_t>(1000000.0 / freq_mhz); }
 
 // Helper: parse a size value that may be an integer or a string with suffix (e.g. "2MB", "4kB", "64B")
-int64_t parse_size_value(const json& val) {
-  if (val.is_number()) return val.get<int64_t>();
-  if (!val.is_string()) return 0;
+int64_t parse_size_value(const json& val)
+{
+  if (val.is_number())
+    return val.get<int64_t>();
+  if (!val.is_string())
+    return 0;
   auto s = val.get<std::string>();
   // Ordered longest-suffix-first to avoid prefix ambiguity (e.g. "kB" before "k")
-  static const std::pair<std::string, int64_t> suffixes[] = {
-    {"TiB", int64_t{1} << 40}, {"TB", int64_t{1} << 40},
-    {"GiB", int64_t{1} << 30}, {"GB", int64_t{1} << 30},
-    {"MiB", int64_t{1} << 20}, {"MB", int64_t{1} << 20},
-    {"kiB", int64_t{1} << 10}, {"kB", int64_t{1} << 10},
-    {"T", int64_t{1} << 40}, {"G", int64_t{1} << 30},
-    {"M", int64_t{1} << 20}, {"k", int64_t{1} << 10},
-    {"B", 1}
-  };
+  static const std::pair<std::string, int64_t> suffixes[] = {{"TiB", int64_t{1} << 40},
+                                                             {"TB", int64_t{1} << 40},
+                                                             {"GiB", int64_t{1} << 30},
+                                                             {"GB", int64_t{1} << 30},
+                                                             {"MiB", int64_t{1} << 20},
+                                                             {"MB", int64_t{1} << 20},
+                                                             {"kiB", int64_t{1} << 10},
+                                                             {"kB", int64_t{1} << 10},
+                                                             {"T", int64_t{1} << 40},
+                                                             {"G", int64_t{1} << 30},
+                                                             {"M", int64_t{1} << 20},
+                                                             {"k", int64_t{1} << 10},
+                                                             {"B", 1}};
   for (auto& [suffix, mult] : suffixes) {
     if (s.size() > suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0) {
       return std::stoll(s.substr(0, s.size() - suffix.size())) * mult;
@@ -59,7 +64,8 @@ int64_t parse_size_value(const json& val) {
 }
 
 // Helper: parse prefetch_activate string like "LOAD,PREFETCH" into access_type vector
-std::vector<access_type> parse_pref_activate(const json& j) {
+std::vector<access_type> parse_pref_activate(const json& j)
+{
   std::vector<access_type> result;
   std::string s;
   if (j.is_string()) {
@@ -74,11 +80,16 @@ std::vector<access_type> parse_pref_activate(const json& j) {
   for (char c : s) {
     if (c == ',') {
       if (!token.empty()) {
-        if (token == "LOAD") result.push_back(access_type::LOAD);
-        else if (token == "RFO") result.push_back(access_type::RFO);
-        else if (token == "PREFETCH") result.push_back(access_type::PREFETCH);
-        else if (token == "WRITE") result.push_back(access_type::WRITE);
-        else if (token == "TRANSLATION") result.push_back(access_type::TRANSLATION);
+        if (token == "LOAD")
+          result.push_back(access_type::LOAD);
+        else if (token == "RFO")
+          result.push_back(access_type::RFO);
+        else if (token == "PREFETCH")
+          result.push_back(access_type::PREFETCH);
+        else if (token == "WRITE")
+          result.push_back(access_type::WRITE);
+        else if (token == "TRANSLATION")
+          result.push_back(access_type::TRANSLATION);
         token.clear();
       }
     } else if (c != ' ') {
@@ -86,29 +97,40 @@ std::vector<access_type> parse_pref_activate(const json& j) {
     }
   }
   if (!token.empty()) {
-    if (token == "LOAD") result.push_back(access_type::LOAD);
-    else if (token == "RFO") result.push_back(access_type::RFO);
-    else if (token == "PREFETCH") result.push_back(access_type::PREFETCH);
-    else if (token == "WRITE") result.push_back(access_type::WRITE);
-    else if (token == "TRANSLATION") result.push_back(access_type::TRANSLATION);
+    if (token == "LOAD")
+      result.push_back(access_type::LOAD);
+    else if (token == "RFO")
+      result.push_back(access_type::RFO);
+    else if (token == "PREFETCH")
+      result.push_back(access_type::PREFETCH);
+    else if (token == "WRITE")
+      result.push_back(access_type::WRITE);
+    else if (token == "TRANSLATION")
+      result.push_back(access_type::TRANSLATION);
   }
   return result;
 }
 
 // Helper: parse replacement/prefetcher/branch/btb module name(s) from JSON into string vector
-std::vector<std::string> parse_module_list(const json& j, const std::string& key, const std::string& default_val) {
-  if (!j.contains(key)) return {default_val};
+std::vector<std::string> parse_module_list(const json& j, const std::string& key, const std::string& default_val)
+{
+  if (!j.contains(key))
+    return {default_val};
   auto& v = j[key];
-  if (v.is_string()) return {v.get<std::string>()};
+  if (v.is_string())
+    return {v.get<std::string>()};
   if (v.is_array()) {
     std::vector<std::string> result;
     for (auto& elem : v) {
-      if (elem.is_string()) result.push_back(elem.get<std::string>());
-      else if (elem.is_object() && elem.contains("model")) result.push_back(elem["model"].get<std::string>());
+      if (elem.is_string())
+        result.push_back(elem.get<std::string>());
+      else if (elem.is_object() && elem.contains("model"))
+        result.push_back(elem["model"].get<std::string>());
     }
     return result;
   }
-  if (v.is_object() && v.contains("model")) return {v["model"].get<std::string>()};
+  if (v.is_object() && v.contains("model"))
+    return {v["model"].get<std::string>()};
   return {default_val};
 }
 
@@ -117,21 +139,29 @@ std::vector<std::string> parse_module_list(const json& j, const std::string& key
 //           "prefetcher": ["no", {"model": "ip_stride", "degree": 4}]
 // Returns map from model name -> ModuleBuilder containing per-model params
 using param_map_type = ModuleBuilder::module_builder_map_type;
-param_map_type parse_module_params(const json& j, const std::string& key) {
+param_map_type parse_module_params(const json& j, const std::string& key)
+{
   param_map_type result;
-  if (!j.contains(key)) return result;
+  if (!j.contains(key))
+    return result;
   auto& v = j[key];
 
   auto extract_params = [](const json& obj) -> ModuleBuilder {
     auto model = obj.contains("model") ? obj["model"].get<std::string>() : std::string{};
     ModuleBuilder params{"", model};
     for (auto& [k, val] : obj.items()) {
-      if (k == "model") continue;
-      if (val.is_number_integer()) params.add_parameter(k, val.get<int64_t>());
-      else if (val.is_number_unsigned()) params.add_parameter(k, val.get<uint64_t>());
-      else if (val.is_number_float()) params.add_parameter(k, val.get<double>());
-      else if (val.is_boolean()) params.add_parameter(k, val.get<bool>());
-      else if (val.is_string()) params.add_parameter(k, val.get<std::string>());
+      if (k == "model")
+        continue;
+      if (val.is_number_integer())
+        params.add_parameter(k, val.get<int64_t>());
+      else if (val.is_number_unsigned())
+        params.add_parameter(k, val.get<uint64_t>());
+      else if (val.is_number_float())
+        params.add_parameter(k, val.get<double>());
+      else if (val.is_boolean())
+        params.add_parameter(k, val.get<bool>());
+      else if (val.is_string())
+        params.add_parameter(k, val.get<std::string>());
     }
     return params;
   };
@@ -152,29 +182,34 @@ param_map_type parse_module_params(const json& j, const std::string& key) {
 // For ints: stored as int64_t (numeric_any_cast handles conversion to uint32_t, size_t, etc.)
 // For objects/arrays: stored as json (useful for nested module specs)
 // renames maps JSON key names to builder parameter names.
-void add_json_params(ModuleBuilder& builder, const json& j,
-                     const std::map<std::string, std::string>& renames = {}) {
+void add_json_params(ModuleBuilder& builder, const json& j, const std::map<std::string, std::string>& renames = {})
+{
   for (auto& [key, val] : j.items()) {
     std::string param_name = key;
     if (auto it = renames.find(key); it != renames.end())
       param_name = it->second;
-    if (val.is_boolean())            builder.add_parameter(param_name, val.get<bool>());
-    else if (val.is_number_integer()) builder.add_parameter(param_name, val.get<int64_t>());
-    else if (val.is_number_float())  builder.add_parameter(param_name, val.get<double>());
-    else if (val.is_string())        builder.add_parameter(param_name, val.get<std::string>());
-    else                             builder.add_parameter(param_name, val); // objects, arrays
+    if (val.is_boolean())
+      builder.add_parameter(param_name, val.get<bool>());
+    else if (val.is_number_integer())
+      builder.add_parameter(param_name, val.get<int64_t>());
+    else if (val.is_number_float())
+      builder.add_parameter(param_name, val.get<double>());
+    else if (val.is_string())
+      builder.add_parameter(param_name, val.get<std::string>());
+    else
+      builder.add_parameter(param_name, val); // objects, arrays
   }
 }
 
 // Helper: set a bandwidth::maximum_type parameter from JSON if present
-void json_bandwidth(ModuleBuilder& builder, const json& j,
-                    const std::string& json_key, const std::string& param_name) {
+void json_bandwidth(ModuleBuilder& builder, const json& j, const std::string& json_key, const std::string& param_name)
+{
   if (j.contains(json_key))
     builder.add_parameter(param_name, champsim::bandwidth::maximum_type{j[json_key].get<long long>()});
 }
 
-void json_bandwidth_or_wrapped(ModuleBuilder& builder, const json& j,
-                               const std::string& json_key, const std::string& param_name) {
+void json_bandwidth_or_wrapped(ModuleBuilder& builder, const json& j, const std::string& json_key, const std::string& param_name)
+{
   if (!j.contains(json_key))
     return;
 
@@ -190,7 +225,7 @@ struct cache_config {
   std::string name;
   std::string model = "DEFAULT_CACHE";
   std::string lower_level;     // name of lower-level cache or "DRAM"
-  std::string lower_translate;  // name of TLB cache for translation
+  std::string lower_translate; // name of TLB cache for translation
   ModuleBuilder defaults_builder;
   bool is_tlb = false;
   bool first_level = false;
@@ -240,7 +275,6 @@ struct ul_pair {
 };
 
 } // anonymous namespace
-
 
 // Register environment as "LEGACY_ENVIRONMENT" environment model
 static champsim::modules::environment_module::register_module<champsim::legacy_environment> default_env_register("LEGACY_ENVIRONMENT");
@@ -566,10 +600,10 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 
     auto ch_builder = ModuleBuilder{ch_name, "DEFAULT_CHANNEL"};
     ch_builder.add_parameter("rq_size", rq_size)
-      .add_parameter("pq_size", pq_size)
-      .add_parameter("wq_size", wq_size)
-      .add_parameter("offset_bits", champsim::data::bits{offset_bits})
-      .add_parameter("match_offset_bits", match_offset);
+        .add_parameter("pq_size", pq_size)
+        .add_parameter("wq_size", wq_size)
+        .add_parameter("offset_bits", champsim::data::bits{offset_bits})
+        .add_parameter("match_offset_bits", match_offset);
 
     builder_params_[ch_name] = ch_builder;
     channels.push_back(module_base<channel_module, environment_module>::create_instance(ch_builder, this));
@@ -580,11 +614,9 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   {
     // Support "frequency" as alias for "data_rate" (frequency == data_rate in DRAM context)
     int data_rate = pmem_json.value("data_rate", pmem_json.value("frequency", 3200));
-    auto dram_builder = ModuleBuilder{"DRAM", "DEFAULT_MEMORY_CONTROLLER",
-                                      champsim::defaults::default_memory_controller()};
-    dram_builder
-      .add_parameter("dbus_period", champsim::chrono::picoseconds{freq_to_period(data_rate)})
-      .add_parameter("mc_period", champsim::chrono::picoseconds{freq_to_period(data_rate / 2.0)});
+    auto dram_builder = ModuleBuilder{"DRAM", "DEFAULT_MEMORY_CONTROLLER", champsim::defaults::default_memory_controller()};
+    dram_builder.add_parameter("dbus_period", champsim::chrono::picoseconds{freq_to_period(data_rate)})
+        .add_parameter("mc_period", champsim::chrono::picoseconds{freq_to_period(data_rate / 2.0)});
 
     // DRAM timing parameters: prefer n* names (cycle counts), accept deprecated t* names
     auto dram_timing = [&](const char* legacy_tUpper, const char* legacy_nUpper, int default_val) {
@@ -596,22 +628,21 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       }
       return default_val;
     };
-    dram_builder
-      .add_parameter("n_rp",  dram_timing("tRP",  "nRP",  24))
-      .add_parameter("n_rcd", dram_timing("tRCD", "nRCD", 24))
-      .add_parameter("n_cas", dram_timing("tCAS", "nCAS", 24))
-      .add_parameter("n_ras", dram_timing("tRAS", "nRAS", 52))
-      .add_parameter("refresh_period", champsim::chrono::microseconds{1000 * pmem_json.value("refresh_period", 32)})
-      .add_parameter("rq_size", pmem_json.value("rq_size", 64))
-      .add_parameter("wq_size", pmem_json.value("wq_size", 64))
-      .add_parameter("channels", pmem_json.value("channels", 1))
-      .add_parameter("channel_width", champsim::data::bytes{pmem_json.value("channel_width", 8)})
-      .add_parameter("rows", pmem_json.value("bank_rows", 65536))
-      .add_parameter("columns", pmem_json.value("bank_columns", 1024))
-      .add_parameter("ranks", pmem_json.value("ranks", 1))
-      .add_parameter("bankgroups", pmem_json.value("bankgroups", 8))
-      .add_parameter("banks", pmem_json.value("banks", 4))
-      .add_parameter("refreshes_per_period", pmem_json.value("refreshes_per_period", 8192));
+    dram_builder.add_parameter("n_rp", dram_timing("tRP", "nRP", 24))
+        .add_parameter("n_rcd", dram_timing("tRCD", "nRCD", 24))
+        .add_parameter("n_cas", dram_timing("tCAS", "nCAS", 24))
+        .add_parameter("n_ras", dram_timing("tRAS", "nRAS", 52))
+        .add_parameter("refresh_period", champsim::chrono::microseconds{1000 * pmem_json.value("refresh_period", 32)})
+        .add_parameter("rq_size", pmem_json.value("rq_size", 64))
+        .add_parameter("wq_size", pmem_json.value("wq_size", 64))
+        .add_parameter("channels", pmem_json.value("channels", 1))
+        .add_parameter("channel_width", champsim::data::bytes{pmem_json.value("channel_width", 8)})
+        .add_parameter("rows", pmem_json.value("bank_rows", 65536))
+        .add_parameter("columns", pmem_json.value("bank_columns", 1024))
+        .add_parameter("ranks", pmem_json.value("ranks", 1))
+        .add_parameter("bankgroups", pmem_json.value("bankgroups", 8))
+        .add_parameter("banks", pmem_json.value("banks", 4))
+        .add_parameter("refreshes_per_period", pmem_json.value("refreshes_per_period", 8192));
 
     std::vector<channel_module*> dram_ul_channels;
     for (auto idx : find_upper_indices("DRAM"))
@@ -629,21 +660,20 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     // Convert ns -> ps (* 1000) for internal chrono representation.
     int64_t minor_fault_ns = vmem_json.value("minor_fault_penalty", 200);
 
-    auto vmem_builder = ModuleBuilder{"VMEM", "DEFAULT_VMEM",
-                                      champsim::defaults::default_vmem()};
+    auto vmem_builder = ModuleBuilder{"VMEM", "DEFAULT_VMEM", champsim::defaults::default_vmem()};
     vmem_builder
-      .add_parameter("page_table_page_size", champsim::data::bytes{
-          vmem_json.contains("pte_page_size") ? static_cast<int>(parse_size_value(vmem_json["pte_page_size"])) : 4096})
-      .add_parameter("page_table_levels", vmem_json.value("num_levels", 5))
-      .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{minor_fault_ns * 1000})
-      .add_parameter("dram", DRAM);
+        .add_parameter("page_table_page_size",
+                       champsim::data::bytes{vmem_json.contains("pte_page_size") ? static_cast<int>(parse_size_value(vmem_json["pte_page_size"])) : 4096})
+        .add_parameter("page_table_levels", vmem_json.value("num_levels", 5))
+        .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{minor_fault_ns * 1000})
+        .add_parameter("dram", DRAM);
 
     // CT treats boolean false as "no shuffle" and any integer (even 0) as a seed value.
     // Only disable shuffling when the JSON value is explicitly boolean false.
     bool no_shuffle = vmem_json.contains("randomization") && vmem_json["randomization"].is_boolean() && vmem_json["randomization"].get<bool>() == false;
     auto randomization_int = vmem_json.value("randomization", 1);
     vmem_builder.add_parameter("randomization_seed",
-      no_shuffle ? std::optional<uint64_t>{} : std::optional<uint64_t>{static_cast<uint64_t>(randomization_int)});
+                               no_shuffle ? std::optional<uint64_t>{} : std::optional<uint64_t>{static_cast<uint64_t>(randomization_int)});
 
     builder_params_["VMEM"] = vmem_builder;
     vmem = module_base<vmem_module, environment_module>::create_instance(vmem_builder, this);
@@ -652,8 +682,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   // ====== Build PTWs ======
   ptws.reserve(ptw_cfgs.size());
   for (auto& pc : ptw_cfgs) {
-    auto ptw_builder = ModuleBuilder{pc.name, pc.model,
-                                     champsim::defaults::default_ptw()};
+    auto ptw_builder = ModuleBuilder{pc.name, pc.model, champsim::defaults::default_ptw()};
 
     std::vector<channel_module*> ptw_ul_channels;
     for (auto idx : find_upper_indices(pc.name))
@@ -674,8 +703,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
         {5, static_cast<uint32_t>(pc.config.value("pscl5_set", 1)), static_cast<uint32_t>(pc.config.value("pscl5_way", 2))},
         {4, static_cast<uint32_t>(pc.config.value("pscl4_set", 1)), static_cast<uint32_t>(pc.config.value("pscl4_way", 4))},
         {3, static_cast<uint32_t>(pc.config.value("pscl3_set", 2)), static_cast<uint32_t>(pc.config.value("pscl3_way", 4))},
-        {2, static_cast<uint32_t>(pc.config.value("pscl2_set", 4)), static_cast<uint32_t>(pc.config.value("pscl2_way", 8))}
-    };
+        {2, static_cast<uint32_t>(pc.config.value("pscl2_set", 4)), static_cast<uint32_t>(pc.config.value("pscl2_way", 8))}};
     ptw_builder.add_parameter("pscl_dims", pscl_dims);
 
     builder_params_[pc.name] = ptw_builder;
@@ -684,9 +712,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 
   // ====== Build caches ======
   std::map<std::string, std::size_t> cache_index_map;
-  static const std::map<std::string, std::string> cache_renames = {
-    {"sets", "num_sets"}, {"ways", "num_ways"}
-  };
+  static const std::map<std::string, std::string> cache_renames = {{"sets", "num_sets"}, {"ways", "num_ways"}};
 
   caches.reserve(cache_build_order.size());
   for (auto& cache_name : cache_build_order) {
@@ -737,26 +763,27 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     // Latency: support "latency" (total), "hit_latency", "fill_latency" in any combination
     {
       bool has_total = cc.config.contains("latency");
-      bool has_hit   = cc.config.contains("hit_latency");
-      bool has_fill  = cc.config.contains("fill_latency");
+      bool has_hit = cc.config.contains("hit_latency");
+      bool has_fill = cc.config.contains("fill_latency");
       if (has_total) {
         auto total = cc.config["latency"].get<int64_t>();
         int64_t hit, fill;
         if (has_hit && has_fill) {
-          hit  = cc.config["hit_latency"].get<int64_t>();
+          hit = cc.config["hit_latency"].get<int64_t>();
           fill = cc.config["fill_latency"].get<int64_t>();
         } else if (has_hit) {
-          hit  = cc.config["hit_latency"].get<int64_t>();
+          hit = cc.config["hit_latency"].get<int64_t>();
           fill = total - hit;
           fmt::print(stderr, "[DEFAULT] {}: fill_latency={} (derived from latency={} - hit_latency={})\n", cc.name, std::max(fill, int64_t{1}), total, hit);
         } else if (has_fill) {
           fill = cc.config["fill_latency"].get<int64_t>();
-          hit  = total - fill;
+          hit = total - fill;
           fmt::print(stderr, "[DEFAULT] {}: hit_latency={} (derived from latency={} - fill_latency={})\n", cc.name, std::max(hit, int64_t{1}), total, fill);
         } else {
-          hit  = total / 2;
+          hit = total / 2;
           fill = total - hit;
-          fmt::print(stderr, "[DEFAULT] {}: hit_latency={}, fill_latency={} (split from latency={})\n", cc.name, std::max(hit, int64_t{1}), std::max(fill, int64_t{1}), total);
+          fmt::print(stderr, "[DEFAULT] {}: hit_latency={}, fill_latency={} (split from latency={})\n", cc.name, std::max(hit, int64_t{1}),
+                     std::max(fill, int64_t{1}), total);
         }
         cache_builder.add_parameter("hit_latency", std::max(hit, int64_t{1}));
         cache_builder.add_parameter("fill_latency", std::max(fill, int64_t{1}));
@@ -770,7 +797,8 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
         // Use default ways, derive sets
         auto default_ways = cc.defaults_builder.get_parameter<uint32_t>("num_ways");
         auto derived_sets = champsim::next_pow2(static_cast<uint32_t>(total_bytes / (default_ways * (1u << offset))));
-        fmt::print(stderr, "[DEFAULT] {}: num_sets={} (derived from size={}, default ways={}, offset_bits={})\n", cc.name, derived_sets, total_bytes, default_ways, offset);
+        fmt::print(stderr, "[DEFAULT] {}: num_sets={} (derived from size={}, default ways={}, offset_bits={})\n", cc.name, derived_sets, total_bytes,
+                   default_ways, offset);
         cache_builder.add_parameter("num_sets", derived_sets);
       } else if (cc.config.contains("ways") && !cc.config.contains("sets")) {
         auto ways = cc.config["ways"].get<uint32_t>();
@@ -820,8 +848,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 
       // Step 2: Derive latency from geometry if no latency keys in JSON
       if (!cc.config.contains("latency") && !cc.config.contains("hit_latency") && !cc.config.contains("fill_latency")) {
-        uint64_t total = std::max(uint64_t{2},
-          static_cast<uint64_t>(std::llround(std::pow(static_cast<double>(final_sets) * final_ways, 0.343) * 0.416)));
+        uint64_t total = std::max(uint64_t{2}, static_cast<uint64_t>(std::llround(std::pow(static_cast<double>(final_sets) * final_ways, 0.343) * 0.416)));
         uint64_t fill = (total + 1) / 2;
         uint64_t hit = total - fill;
         fmt::print(stderr, "[DEFAULT] {}: hit_latency={}, fill_latency={} (derived from sets={}, ways={})\n", cc.name, hit, fill, final_sets, final_ways);
@@ -833,8 +860,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
 
       // Step 3: Derive bandwidth from geometry if not explicit
       if (!cc.config.contains("max_tag_check")) {
-        auto derived_bw = std::max(champsim::bandwidth::maximum_type{1},
-                                   champsim::bandwidth::maximum_type{final_sets >> 9});
+        auto derived_bw = std::max(champsim::bandwidth::maximum_type{1}, champsim::bandwidth::maximum_type{final_sets >> 9});
         fmt::print(stderr, "[DEFAULT] {}: max_tag_bandwidth={} (derived from sets={})\n", cc.name, champsim::to_underlying(derived_bw), final_sets);
         cache_builder.add_parameter("max_tag_bandwidth", derived_bw);
         if (!cc.config.contains("max_fill")) {
@@ -853,10 +879,10 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
       // Step 4: Derive MSHR size from geometry if not explicit in JSON or defaults
       // CT only sets explicit mshr_size for DTLB; all other caches use the formula
       if (!cc.config.contains("mshr_size") && cc.defaults_builder.get_parameters().count("mshr_size") == 0) {
-        uint32_t derived_mshr = std::max(1u, static_cast<uint32_t>(
-          (static_cast<uint64_t>(final_sets) * final_fill * static_cast<uint64_t>(champsim::to_underlying(final_fill_bw))) >> 4));
-        fmt::print(stderr, "[DEFAULT] {}: mshr_size={} (derived from sets={}, fill_latency={}, fill_bw={})\n",
-                   cc.name, derived_mshr, final_sets, final_fill, champsim::to_underlying(final_fill_bw));
+        uint32_t derived_mshr = std::max(
+            1u, static_cast<uint32_t>((static_cast<uint64_t>(final_sets) * final_fill * static_cast<uint64_t>(champsim::to_underlying(final_fill_bw))) >> 4));
+        fmt::print(stderr, "[DEFAULT] {}: mshr_size={} (derived from sets={}, fill_latency={}, fill_bw={})\n", cc.name, derived_mshr, final_sets, final_fill,
+                   champsim::to_underlying(final_fill_bw));
         cache_builder.add_parameter("mshr_size", derived_mshr);
       }
     }
@@ -869,8 +895,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   // ====== Build cores ======
   cores.reserve(core_cfgs.size());
   for (auto& cc : core_cfgs) {
-    auto core_builder = ModuleBuilder{cc.name, cc.model,
-                                      champsim::defaults::default_core()};
+    auto core_builder = ModuleBuilder{cc.name, cc.model, champsim::defaults::default_core()};
 
     auto l1i_ptr = caches.at(cache_index_map[cc.l1i_name]);
     auto l1d_ptr = caches.at(cache_index_map[cc.l1d_name]);
@@ -915,8 +940,7 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
     // Forward all JSON scalar overrides (buffer sizes, latencies, etc.)
     add_json_params(core_builder, cc.config);
     // Bandwidth types need explicit wrapping (enum class)
-    for (auto& key : {"fetch_width", "decode_width", "dispatch_width", "execute_width",
-                       "lq_width", "sq_width", "retire_width"})
+    for (auto& key : {"fetch_width", "decode_width", "dispatch_width", "execute_width", "lq_width", "sq_width", "retire_width"})
       json_bandwidth(core_builder, cc.config, key, key);
     json_bandwidth(core_builder, cc.config, "scheduler_size", "schedule_width");
     // DIB parameters (from separate dib_json, not core config)
@@ -942,14 +966,24 @@ champsim::legacy_environment::legacy_environment(champsim::modules::ModuleBuilde
   // frequency spreads (e.g. 6 GHz CPU + 800 MHz DRAM MC) don't false-trigger.
   {
     int max_freq = 0, min_freq = std::numeric_limits<int>::max();
-    for (auto& cc : core_cfgs)      { max_freq = std::max(max_freq, cc.frequency); min_freq = std::min(min_freq, cc.frequency); }
-    for (auto& [n, cc] : cache_cfgs){ max_freq = std::max(max_freq, cc.frequency); min_freq = std::min(min_freq, cc.frequency); }
-    for (auto& pc : ptw_cfgs)       { max_freq = std::max(max_freq, pc.frequency); min_freq = std::min(min_freq, pc.frequency); }
+    for (auto& cc : core_cfgs) {
+      max_freq = std::max(max_freq, cc.frequency);
+      min_freq = std::min(min_freq, cc.frequency);
+    }
+    for (auto& [n, cc] : cache_cfgs) {
+      max_freq = std::max(max_freq, cc.frequency);
+      min_freq = std::min(min_freq, cc.frequency);
+    }
+    for (auto& pc : ptw_cfgs) {
+      max_freq = std::max(max_freq, pc.frequency);
+      min_freq = std::min(min_freq, pc.frequency);
+    }
     int data_rate = pmem_json.value("data_rate", pmem_json.value("frequency", 3200));
     int dram_mc_freq = data_rate / 2;
     max_freq = std::max(max_freq, dram_mc_freq);
     min_freq = std::min(min_freq, dram_mc_freq);
-    if (min_freq <= 0) min_freq = 1;
+    if (min_freq <= 0)
+      min_freq = 1;
     int64_t ratio = std::max(int64_t{1}, static_cast<int64_t>(max_freq) / min_freq);
     deadlock_cycles_ = static_cast<int>(std::min(ratio * 500000, int64_t{std::numeric_limits<int>::max()}));
   }
@@ -988,7 +1022,8 @@ auto champsim::legacy_environment::view(const std::string& interface_type) const
     std::map<std::string, std::size_t> type_idx;
     for (auto& [name, iface] : module_order_) {
       auto to_op = champsim::modules::interface_registry::get_to_operable(iface);
-      if (!to_op) continue;
+      if (!to_op)
+        continue;
       auto& vec = modules_by_type_.at(iface);
       auto idx = type_idx[iface]++;
       result.push_back(static_cast<champsim::operable*>(to_op(vec.at(idx))));
@@ -997,6 +1032,7 @@ auto champsim::legacy_environment::view(const std::string& interface_type) const
   }
 
   auto it = modules_by_type_.find(interface_type);
-  if (it == modules_by_type_.end()) return {};
+  if (it == modules_by_type_.end())
+    return {};
   return it->second;
 }

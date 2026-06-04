@@ -28,16 +28,18 @@
 #include "util/units.h"
 
 MEMORY_CONTROLLER::MEMORY_CONTROLLER(champsim::modules::ModuleBuilder builder)
-    : champsim::modules::memory_controller_module(builder.get_parameter<champsim::chrono::picoseconds>("mc_period")), queues(std::move(builder.get_parameter<std::vector<channel_type*>>("ul_channels"))),
+    : champsim::modules::memory_controller_module(builder.get_parameter<champsim::chrono::picoseconds>("mc_period")),
+      queues(std::move(builder.get_parameter<std::vector<channel_type*>>("ul_channels"))),
       channel_width(builder.get_parameter<champsim::data::bytes>("channel_width")),
-      address_mapping(channel_width, BLOCK_SIZE / channel_width.count(), builder.get_parameter<std::size_t>("channels"), builder.get_parameter<std::size_t>("bankgroups"),
-                      builder.get_parameter<std::size_t>("banks"), builder.get_parameter<std::size_t>("columns"), builder.get_parameter<std::size_t>("ranks"),
-                      builder.get_parameter<std::size_t>("rows")), data_bus_period(builder.get_parameter<champsim::chrono::picoseconds>("dbus_period"))
+      address_mapping(channel_width, BLOCK_SIZE / channel_width.count(), builder.get_parameter<std::size_t>("channels"),
+                      builder.get_parameter<std::size_t>("bankgroups"), builder.get_parameter<std::size_t>("banks"),
+                      builder.get_parameter<std::size_t>("columns"), builder.get_parameter<std::size_t>("ranks"), builder.get_parameter<std::size_t>("rows")),
+      data_bus_period(builder.get_parameter<champsim::chrono::picoseconds>("dbus_period"))
 {
   auto num_channels = address_mapping.channels();
   for (std::size_t i{0}; i < num_channels; ++i) {
-    channels.emplace_back(data_bus_period, builder.get_parameter<champsim::chrono::picoseconds>("mc_period"), builder.get_parameter<std::size_t>("n_rp"), builder.get_parameter<std::size_t>("n_rcd"),
-                          builder.get_parameter<std::size_t>("n_cas"), builder.get_parameter<std::size_t>("n_ras"),
+    channels.emplace_back(data_bus_period, builder.get_parameter<champsim::chrono::picoseconds>("mc_period"), builder.get_parameter<std::size_t>("n_rp"),
+                          builder.get_parameter<std::size_t>("n_rcd"), builder.get_parameter<std::size_t>("n_cas"), builder.get_parameter<std::size_t>("n_ras"),
                           builder.get_parameter<champsim::chrono::microseconds>("refresh_period"), builder.get_parameter<std::size_t>("refreshes_per_period"),
                           channel_width, builder.get_parameter<std::size_t>("rq_size"), builder.get_parameter<std::size_t>("wq_size"), address_mapping);
   }

@@ -22,8 +22,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include "modules.h"
 
+#include "modules.h"
 
 namespace champsim
 {

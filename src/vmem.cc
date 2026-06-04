@@ -26,7 +26,10 @@
 using namespace champsim::data::data_literals;
 
 VirtualMemory::VirtualMemory(champsim::modules::ModuleBuilder builder)
-    : randomization_seed(builder.get_parameter<std::optional<uint64_t>>("randomization_seed", true)), dram(builder.get_parameter<champsim::modules::memory_controller_module*>("dram")), minor_fault_penalty(builder.get_parameter<champsim::chrono::clock::duration>("minor_fault_penalty")), pt_levels(builder.get_parameter<std::size_t>("page_table_levels")), pte_page_size(builder.get_parameter<champsim::data::bytes>("page_table_page_size")),
+    : randomization_seed(builder.get_parameter<std::optional<uint64_t>>("randomization_seed", true)),
+      dram(builder.get_parameter<champsim::modules::memory_controller_module*>("dram")),
+      minor_fault_penalty(builder.get_parameter<champsim::chrono::clock::duration>("minor_fault_penalty")),
+      pt_levels(builder.get_parameter<std::size_t>("page_table_levels")), pte_page_size(builder.get_parameter<champsim::data::bytes>("page_table_page_size")),
       next_pte_page(
           champsim::dynamic_extent{champsim::data::bits{LOG2_PAGE_SIZE}, champsim::data::bits{champsim::lg2(champsim::data::bytes{pte_page_size}.count())}}, 0)
 {

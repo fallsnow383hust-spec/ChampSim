@@ -16,24 +16,25 @@
 #include <map>
 #include <string>
 #include <vector>
-
 #include <fmt/core.h>
 #include <nlohmann/json.hpp>
 
-#include "champsim.h"
-#include "chrono.h"
 #include "access_type.h"
 #include "bandwidth.h"
+#include "champsim.h"
+#include "chrono.h"
 #include "util/bits.h"
 #include "util/units.h"
 
 using json = nlohmann::json;
 using namespace champsim::modules;
 
-namespace {
+namespace
+{
 
 // Split a string like "4G" into {4.0, "G"} or "32000" into {32000.0, ""}.
-std::pair<double, std::string> parse_number_and_suffix(const std::string& s) {
+std::pair<double, std::string> parse_number_and_suffix(const std::string& s)
+{
   std::size_t pos = 0;
   double value = std::stod(s, &pos);
   return {value, s.substr(pos)};
@@ -41,14 +42,20 @@ std::pair<double, std::string> parse_number_and_suffix(const std::string& s) {
 
 // Parse a frequency string with SI suffix → picoseconds period.
 // Formula: ps = round(1e12 / (value * multiplier))
-champsim::chrono::picoseconds parse_frequency_string(const std::string& s) {
+champsim::chrono::picoseconds parse_frequency_string(const std::string& s)
+{
   auto [value, suffix] = parse_number_and_suffix(s);
   double multiplier = 1.0;
-  if (suffix.empty())      multiplier = 1.0;
-  else if (suffix == "K")  multiplier = 1e3;
-  else if (suffix == "M")  multiplier = 1e6;
-  else if (suffix == "G")  multiplier = 1e9;
-  else if (suffix == "T")  multiplier = 1e12;
+  if (suffix.empty())
+    multiplier = 1.0;
+  else if (suffix == "K")
+    multiplier = 1e3;
+  else if (suffix == "M")
+    multiplier = 1e6;
+  else if (suffix == "G")
+    multiplier = 1e9;
+  else if (suffix == "T")
+    multiplier = 1e12;
   else {
     fmt::print("[ENVIRONMENT] ERROR: unknown frequency suffix '{}' in '{}'\n", suffix, s);
     std::exit(-1);
@@ -59,7 +66,8 @@ champsim::chrono::picoseconds parse_frequency_string(const std::string& s) {
 
 // Parse a time string with suffix → std::any of the appropriate chrono type.
 // The suffix determines the exact stored type (must match consumer expectations).
-std::any parse_time_string(const std::string& s) {
+std::any parse_time_string(const std::string& s)
+{
   auto [value, suffix] = parse_number_and_suffix(s);
   auto int_val = static_cast<int64_t>(std::round(value));
   if (suffix.empty() || suffix == "p")
@@ -77,41 +85,57 @@ std::any parse_time_string(const std::string& s) {
 }
 
 // Parse a bytes string with SI or IEC binary suffix → champsim::data::bytes.
-champsim::data::bytes parse_bytes_string(const std::string& s) {
+champsim::data::bytes parse_bytes_string(const std::string& s)
+{
   auto [value, suffix] = parse_number_and_suffix(s);
   auto int_val = static_cast<long long>(std::round(value));
   if (suffix.empty())
     return champsim::data::bytes{int_val};
   // IEC binary prefixes
-  if (suffix == "Ki") return champsim::data::kibibytes{int_val};
-  if (suffix == "Mi") return champsim::data::mebibytes{int_val};
-  if (suffix == "Gi") return champsim::data::gibibytes{int_val};
-  if (suffix == "Ti") return champsim::data::tebibytes{int_val};
+  if (suffix == "Ki")
+    return champsim::data::kibibytes{int_val};
+  if (suffix == "Mi")
+    return champsim::data::mebibytes{int_val};
+  if (suffix == "Gi")
+    return champsim::data::gibibytes{int_val};
+  if (suffix == "Ti")
+    return champsim::data::tebibytes{int_val};
   // SI decimal prefixes
-  if (suffix == "K") return champsim::data::bytes{int_val * 1000LL};
-  if (suffix == "M") return champsim::data::bytes{int_val * 1000000LL};
-  if (suffix == "G") return champsim::data::bytes{int_val * 1000000000LL};
-  if (suffix == "T") return champsim::data::bytes{int_val * 1000000000000LL};
+  if (suffix == "K")
+    return champsim::data::bytes{int_val * 1000LL};
+  if (suffix == "M")
+    return champsim::data::bytes{int_val * 1000000LL};
+  if (suffix == "G")
+    return champsim::data::bytes{int_val * 1000000000LL};
+  if (suffix == "T")
+    return champsim::data::bytes{int_val * 1000000000000LL};
   fmt::print("[ENVIRONMENT] ERROR: unknown bytes suffix '{}' in '{}'\n", suffix, s);
   std::exit(-1);
 }
 
 // Parse a bits string with SI suffix → champsim::data::bits.
-champsim::data::bits parse_bits_string(const std::string& s) {
+champsim::data::bits parse_bits_string(const std::string& s)
+{
   auto [value, suffix] = parse_number_and_suffix(s);
   auto int_val = static_cast<unsigned long long>(std::round(value));
-  if (suffix.empty()) return champsim::data::bits{int_val};
-  if (suffix == "K")  return champsim::data::bits{int_val * 1000ULL};
-  if (suffix == "M")  return champsim::data::bits{int_val * 1000000ULL};
-  if (suffix == "G")  return champsim::data::bits{int_val * 1000000000ULL};
+  if (suffix.empty())
+    return champsim::data::bits{int_val};
+  if (suffix == "K")
+    return champsim::data::bits{int_val * 1000ULL};
+  if (suffix == "M")
+    return champsim::data::bits{int_val * 1000000ULL};
+  if (suffix == "G")
+    return champsim::data::bits{int_val * 1000000000ULL};
   fmt::print("[ENVIRONMENT] ERROR: unknown bits suffix '{}' in '{}'\n", suffix, s);
   std::exit(-1);
 }
 
 // Try to parse a JSON object as a type-wrapped value, e.g. {"frequency": "4G"}
 // Returns true and sets the std::any result if recognized.
-bool try_parse_typed_value(const json& obj, std::any& out) {
-  if (!obj.is_object() || obj.size() != 1) return false;
+bool try_parse_typed_value(const json& obj, std::any& out)
+{
+  if (!obj.is_object() || obj.size() != 1)
+    return false;
   auto it = obj.begin();
   const std::string& type_key = it.key();
   const json& val = it.value();
@@ -132,8 +156,10 @@ bool try_parse_typed_value(const json& obj, std::any& out) {
     out = champsim::bandwidth::maximum_type{val.get<long long>()};
     return true;
   } else if (type_key == "optional_uint64") {
-    if (val.is_null()) out = std::optional<uint64_t>{};
-    else out = std::optional<uint64_t>{val.get<uint64_t>()};
+    if (val.is_null())
+      out = std::optional<uint64_t>{};
+    else
+      out = std::optional<uint64_t>{val.get<uint64_t>()};
     return true;
   } else if (type_key == "null") {
     std::string iface_name = val.get<std::string>();
@@ -153,16 +179,21 @@ bool try_parse_typed_value(const json& obj, std::any& out) {
 }
 
 // Try to parse an @-reference string, returning the referenced name if valid.
-std::optional<std::string> try_parse_ref(const std::string& s) {
-  if (!s.empty() && s[0] == '@') return s.substr(1);
+std::optional<std::string> try_parse_ref(const std::string& s)
+{
+  if (!s.empty() && s[0] == '@')
+    return s.substr(1);
   return std::nullopt;
 }
 
 // Check if a JSON array is entirely @-references
-bool is_ref_array(const json& arr) {
-  if (!arr.is_array() || arr.empty()) return false;
+bool is_ref_array(const json& arr)
+{
+  if (!arr.is_array() || arr.empty())
+    return false;
   for (auto& elem : arr) {
-    if (!elem.is_string() || !try_parse_ref(elem.get<std::string>())) return false;
+    if (!elem.is_string() || !try_parse_ref(elem.get<std::string>()))
+      return false;
   }
   return true;
 }
@@ -170,15 +201,15 @@ bool is_ref_array(const json& arr) {
 // Populate a ModuleBuilder with parameters from a JSON node, with full type
 // support (typed objects, @-references, arrays, scalars) and recursive children.
 // This handles arbitrary nesting depth for submodules.
-void populate_builder(const json& node, ModuleBuilder& builder,
-                      const std::map<std::string, std::any>& modules_by_name,
+void populate_builder(const json& node, ModuleBuilder& builder, const std::map<std::string, std::any>& modules_by_name,
                       const std::map<std::string, std::string>& module_interfaces)
 {
   const std::string& name = builder.get_name();
 
   // Process all JSON parameters (skip reserved keys)
   for (auto& [key, val] : node.items()) {
-    if (key == "name" || key == "module" || key == "model" || key == "children" || key == "_comment") continue;
+    if (key == "name" || key == "module" || key == "model" || key == "children" || key == "_comment")
+      continue;
 
     if (val.is_null()) {
       continue;
@@ -204,8 +235,8 @@ void populate_builder(const json& node, ModuleBuilder& builder,
         if (ref_iface.empty()) {
           ref_iface = curr_iface;
         } else if (curr_iface != ref_iface) {
-          fmt::print("[ENVIRONMENT] ERROR: mixed interface types in array '{}' of '{}': expected '{}', got '{}' for '{}'\n",
-                     key, name, ref_iface, curr_iface, rn);
+          fmt::print("[ENVIRONMENT] ERROR: mixed interface types in array '{}' of '{}': expected '{}', got '{}' for '{}'\n", key, name, ref_iface, curr_iface,
+                     rn);
           std::exit(-1);
         }
         refs.push_back(mit->second);
@@ -229,7 +260,8 @@ void populate_builder(const json& node, ModuleBuilder& builder,
     } else if (val.is_array()) {
       if (!val.empty() && val[0].is_string()) {
         std::vector<std::string> sv;
-        for (auto& e : val) sv.push_back(e.get<std::string>());
+        for (auto& e : val)
+          sv.push_back(e.get<std::string>());
         builder.add_parameter(key, sv);
       } else if (!val.empty() && val[0].is_array()) {
         std::vector<std::array<uint32_t, 3>> dims;
@@ -336,7 +368,7 @@ champsim::environment::environment(ModuleBuilder builder)
       }
     }
     if (min_ps < std::numeric_limits<ps_rep>::max() && min_ps > 0)
-      deadlock_cycles_ = static_cast<int>(std::max((sum_ps / min_ps)*3, ps_rep{500}));
+      deadlock_cycles_ = static_cast<int>(std::max((sum_ps / min_ps) * 3, ps_rep{500}));
   }
 }
 
@@ -358,6 +390,7 @@ auto champsim::environment::view(const std::string& interface_type) const -> std
   }
 
   auto it = modules_by_type_.find(interface_type);
-  if (it == modules_by_type_.end()) return {};
+  if (it == modules_by_type_.end())
+    return {};
   return it->second;
 }

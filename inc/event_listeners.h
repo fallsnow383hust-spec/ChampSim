@@ -1,11 +1,11 @@
 #ifndef EVENT_LISTENERS_H
 #define EVENT_LISTENERS_H
 
+#include <bitset>
 #include <iostream>
 #include <string>
 #include <tuple>
 #include <vector>
-#include <bitset>
 
 #include "events.h"
 #include "listeners/heartbeat.h"

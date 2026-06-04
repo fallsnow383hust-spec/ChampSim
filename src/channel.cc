@@ -28,7 +28,10 @@
 champsim::channel::channel() : channel(champsim::modules::ModuleBuilder{"default_channel", "DEFAULT_CHANNEL", champsim::defaults::default_channel()}) {}
 
 champsim::channel::channel(champsim::modules::ModuleBuilder builder)
-    : RQ_SIZE(builder.get_parameter<std::size_t>("rq_size", false, 0)), PQ_SIZE(builder.get_parameter<std::size_t>("pq_size", false, 0)), WQ_SIZE(builder.get_parameter<std::size_t>("wq_size", false, 0)), OFFSET_BITS(builder.get_parameter<champsim::data::bits>("offset_bits", false, champsim::data::bits{0})), match_offset_bits(builder.get_parameter<bool>("match_offset_bits", false, false))
+    : RQ_SIZE(builder.get_parameter<std::size_t>("rq_size", false, 0)), PQ_SIZE(builder.get_parameter<std::size_t>("pq_size", false, 0)),
+      WQ_SIZE(builder.get_parameter<std::size_t>("wq_size", false, 0)),
+      OFFSET_BITS(builder.get_parameter<champsim::data::bits>("offset_bits", false, champsim::data::bits{0})),
+      match_offset_bits(builder.get_parameter<bool>("match_offset_bits", false, false))
 {
 }
 

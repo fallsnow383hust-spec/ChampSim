@@ -26,8 +26,8 @@
 #include "address.h"
 #include "bandwidth.h"
 #include "channel.h"
-#include "operable.h"
 #include "msl/lru_table.h"
+#include "operable.h"
 #include "waitable.h"
 
 class PageTableWalker : public champsim::modules::page_table_walker_module

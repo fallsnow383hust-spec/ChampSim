@@ -28,8 +28,8 @@
 #include "champsim.h"
 #include "defaults.hpp"
 #include "environment.h"
-#include "legacy_environment.h"
 #include "event_listeners.h"
+#include "legacy_environment.h"
 #include "modules.h"
 #include "ooo_cpu.h" // for O3_CPU
 #include "phase_info.h"
@@ -86,7 +86,8 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   }
 
   // Enable dump mode if requested
-  if (knob_dump) fmt::print("=== Module Builder Dump ===\n");
+  if (knob_dump)
+    fmt::print("=== Module Builder Dump ===\n");
 
   // Read JSON config from file or stdin
   nlohmann::json config_json;
@@ -99,7 +100,8 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
       return 1;
     }
   } else {
-    if (config_file_path.empty()) config_file_path = "champsim_config.json";
+    if (config_file_path.empty())
+      config_file_path = "champsim_config.json";
     std::ifstream config_stream(config_file_path);
     if (config_stream.is_open()) {
       try {
@@ -134,12 +136,12 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
     std::get<Heartbeat>(listeners).cycles_between_printouts = config_json.value("heartbeat_frequency", uint64_t{10000000});
   }
 
-  auto env_builder = champsim::modules::ModuleBuilder("environment", env_model)
-    .add_parameter("config_json", config_json);
+  auto env_builder = champsim::modules::ModuleBuilder("environment", env_model).add_parameter("config_json", config_json);
   champsim::modules::ModuleBuilder::set_dump_enabled(knob_dump);
   auto* gen_environment = champsim::modules::environment_module::create_instance(env_builder, static_cast<champsim::modules::environment_module*>(nullptr));
 
-  if (knob_dump) fmt::print("=== End Module Builder Dump ===\n");
+  if (knob_dump)
+    fmt::print("=== End Module Builder Dump ===\n");
 
   auto set_heartbeat_callback = [&](auto) {
     for (champsim::modules::core_module& cpu : gen_environment->typed_view<champsim::modules::core_module>("core")) {
@@ -157,7 +159,7 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
   deprec_warmup_instr_option =
       app2.add_option("--warmup_instructions", warmup_instructions, "[deprecated] use --warmup-instructions instead")->excludes(warmup_instr_option);
   sim_instr_option = app2.add_option("-i,--simulation-instructions", simulation_instructions,
-                                          "The number of instructions in the detailed phase. If not specified, run to the end of the trace.");
+                                     "The number of instructions in the detailed phase. If not specified, run to the end of the trace.");
   deprec_sim_instr_option =
       app2.add_option("--simulation_instructions", simulation_instructions, "[deprecated] use --simulation-instructions instead")->excludes(sim_instr_option);
   json_option =
@@ -193,7 +195,8 @@ int main(int argc, char** argv) // NOLINT(bugprone-exception-escape)
 
   std::vector<champsim::phase_info> phases{
       {champsim::phase_info{"Warmup", true, static_cast<uint64_t>(warmup_instructions), std::vector<std::size_t>(std::size(trace_names), 0), trace_names},
-       champsim::phase_info{"Simulation", false, static_cast<uint64_t>(simulation_instructions), std::vector<std::size_t>(std::size(trace_names), 0), trace_names}}};
+       champsim::phase_info{"Simulation", false, static_cast<uint64_t>(simulation_instructions), std::vector<std::size_t>(std::size(trace_names), 0),
+                            trace_names}}};
 
   for (auto& p : phases) {
     std::iota(std::begin(p.trace_index), std::end(p.trace_index), 0);

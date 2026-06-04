@@ -23,8 +23,8 @@
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 
-#include "modules.h"
 #include "event_listeners.h"
+#include "modules.h"
 #include "ooo_cpu.h"
 #include "operable.h"
 #include "phase_info.h"
@@ -36,8 +36,7 @@ std::chrono::seconds elapsed_time() { return std::chrono::duration_cast<std::chr
 
 namespace champsim
 {
-long do_cycle(std::vector<std::reference_wrapper<champsim::operable>> operables,
-              std::vector<std::reference_wrapper<champsim::modules::core_module>>& cores,
+long do_cycle(std::vector<std::reference_wrapper<champsim::operable>> operables, std::vector<std::reference_wrapper<champsim::modules::core_module>>& cores,
               std::vector<tracereader>& traces, std::vector<std::size_t> trace_index, champsim::chrono::clock& global_clock)
 {
   std::sort(std::begin(operables), std::end(operables),
@@ -128,7 +127,7 @@ phase_stats do_phase(const phase_info& phase, modules::environment_module& env, 
 
     if (stalled_cycle >= DEADLOCK_CYCLE || livelock_trigger) {
       std::for_each(std::begin(operables), std::end(operables), [](champsim::operable& c) { c.print_deadlock(); });
-      exit(-1); //abort fails to flush which can truncate deadlock printouts, so use exit with -1 to indicate failure
+      exit(-1); // abort fails to flush which can truncate deadlock printouts, so use exit with -1 to indicate failure
     }
 
     // If any trace reaches EOF, terminate all phases
@@ -148,8 +147,8 @@ phase_stats do_phase(const phase_info& phase, modules::environment_module& env, 
           op.end_phase(cpu.get_cpu_num());
         }
 
-        fmt::print("{} finished CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name, cpu.get_cpu_num(),
-                   cpu.sim_instr(), cpu.sim_cycle(), std::ceil(cpu.sim_instr()) / std::ceil(cpu.sim_cycle()), elapsed_time());
+        fmt::print("{} finished CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name,
+                   cpu.get_cpu_num(), cpu.sim_instr(), cpu.sim_cycle(), std::ceil(cpu.sim_instr()) / std::ceil(cpu.sim_cycle()), elapsed_time());
       }
     }
 
@@ -157,8 +156,8 @@ phase_stats do_phase(const phase_info& phase, modules::environment_module& env, 
   }
 
   for (champsim::modules::core_module& cpu : cores) {
-    fmt::print("{} complete CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name, cpu.get_cpu_num(),
-               cpu.sim_instr(), cpu.sim_cycle(), std::ceil(cpu.sim_instr()) / std::ceil(cpu.sim_cycle()), elapsed_time());
+    fmt::print("{} complete CPU {} instructions: {} cycles: {} cumulative IPC: {:.4g} (Simulation time: {:%H hr %M min %S sec})\n", phase_name,
+               cpu.get_cpu_num(), cpu.sim_instr(), cpu.sim_cycle(), std::ceil(cpu.sim_instr()) / std::ceil(cpu.sim_cycle()), elapsed_time());
   }
 
   phase_stats stats;
@@ -168,15 +167,19 @@ phase_stats do_phase(const phase_info& phase, modules::environment_module& env, 
     stats.trace_names.push_back(trace_names.at(trace_index.at(i)));
   }
 
-  std::transform(std::begin(cores), std::end(cores), std::back_inserter(stats.sim_cpu_stats), [](const champsim::modules::core_module& cpu) { return cpu.get_sim_stats(); });
-  std::transform(std::begin(cores), std::end(cores), std::back_inserter(stats.roi_cpu_stats), [](const champsim::modules::core_module& cpu) { return cpu.get_roi_stats(); });
+  std::transform(std::begin(cores), std::end(cores), std::back_inserter(stats.sim_cpu_stats),
+                 [](const champsim::modules::core_module& cpu) { return cpu.get_sim_stats(); });
+  std::transform(std::begin(cores), std::end(cores), std::back_inserter(stats.roi_cpu_stats),
+                 [](const champsim::modules::core_module& cpu) { return cpu.get_roi_stats(); });
 
   auto caches = env.typed_view<champsim::modules::cache_module>("cache");
-  std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.sim_cache_stats), [](const champsim::modules::cache_module& cache) { return cache.get_sim_stats(); });
-  std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.roi_cache_stats), [](const champsim::modules::cache_module& cache) { return cache.get_roi_stats(); });
+  std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.sim_cache_stats),
+                 [](const champsim::modules::cache_module& cache) { return cache.get_sim_stats(); });
+  std::transform(std::begin(caches), std::end(caches), std::back_inserter(stats.roi_cache_stats),
+                 [](const champsim::modules::cache_module& cache) { return cache.get_roi_stats(); });
 
   for (champsim::modules::memory_controller_module& dram : env.typed_view<champsim::modules::memory_controller_module>("memory_controller")) {
-    for(std::size_t chan_no = 0; chan_no < dram.get_num_channels(); ++chan_no) {
+    for (std::size_t chan_no = 0; chan_no < dram.get_num_channels(); ++chan_no) {
       stats.sim_dram_stats.push_back(dram.get_sim_stats(chan_no));
       stats.roi_dram_stats.push_back(dram.get_roi_stats(chan_no));
     }

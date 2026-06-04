@@ -18,8 +18,8 @@
 #include <string>
 #include <vector>
 
-#include "phase_info.h"
 #include "modules.h"
+#include "phase_info.h"
 
 namespace champsim
 {

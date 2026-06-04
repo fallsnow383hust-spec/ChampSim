@@ -22,20 +22,21 @@
 bool champsim::modules::ModuleBuilder::global_dump_enabled_ = false;
 std::string champsim::modules::ModuleBuilder::dump_log_;
 
-namespace champsim::modules {
+namespace champsim::modules
+{
 
-  bool prefetcher::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const
-  {
-    return intern_->prefetch_line(pf_addr, fill_this_level, prefetch_metadata);
-  }
-  // LCOV_EXCL_START Exclude deprecated function
-  bool champsim::modules::prefetcher::prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const
-  {
-    return prefetch_line(champsim::address{pf_addr}, fill_this_level, prefetch_metadata);
-  }
-  // LCOV_EXCL_STOP
-
+bool prefetcher::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const
+{
+  return intern_->prefetch_line(pf_addr, fill_this_level, prefetch_metadata);
 }
+// LCOV_EXCL_START Exclude deprecated function
+bool champsim::modules::prefetcher::prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const
+{
+  return prefetch_line(champsim::address{pf_addr}, fill_this_level, prefetch_metadata);
+}
+// LCOV_EXCL_STOP
+
+} // namespace champsim::modules
 
 // Interface registrations: map interface name strings to module_base specializations
 static champsim::modules::channel_module::register_interface channel_iface_reg("channel");
@@ -45,4 +46,3 @@ static champsim::modules::vmem_module::register_interface vmem_iface_reg("vmem")
 static champsim::modules::page_table_walker_module::register_interface ptw_iface_reg("page_table_walker");
 static champsim::modules::core_module::register_interface core_iface_reg("core");
 static champsim::modules::environment_module::register_interface env_iface_reg("environment");
-

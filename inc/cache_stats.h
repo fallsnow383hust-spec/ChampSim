@@ -6,9 +6,9 @@
 #include <type_traits>
 #include <utility>
 
+#include "access_type.h"
 #include "champsim.h"
 #include "event_counter.h"
-#include "access_type.h"
 
 struct cache_stats {
   std::string name;
@@ -29,7 +29,8 @@ struct cache_stats {
 
 cache_stats operator-(cache_stats lhs, cache_stats rhs);
 
-namespace champsim {
+namespace champsim
+{
 struct cache_queue_stats {
   uint64_t RQ_ACCESS = 0;
   uint64_t RQ_FULL = 0;
