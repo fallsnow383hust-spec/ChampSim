@@ -18,10 +18,8 @@
 #include <string>
 #include <vector>
 
-#include "cache.h"
-#include "dram_controller.h"
-#include "ooo_cpu.h"
 #include "phase_info.h"
+#include "modules.h"
 
 namespace champsim
 {
@@ -34,9 +32,9 @@ public:
   void print(phase_stats& stats);
   void print(std::vector<phase_stats>& stats);
 
-  static std::vector<std::string> format(O3_CPU::stats_type stats);
-  static std::vector<std::string> format(CACHE::stats_type stats);
-  static std::vector<std::string> format(DRAM_CHANNEL::stats_type stats);
+  static std::vector<std::string> format(champsim::modules::core_module::stats_type stats);
+  static std::vector<std::string> format(champsim::modules::cache_module::stats_type stats);
+  static std::vector<std::string> format(champsim::modules::memory_controller_module::stats_type stats);
   static std::vector<std::string> format(phase_stats& stats);
 };
 

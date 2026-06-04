@@ -19,23 +19,23 @@ SCENARIO("The total latency is the sum of the stage latency")
     const auto num_instrs = GENERATE(1u, 2u, 5u);
     do_nothing_MRC mock_L1I, mock_L1D;
 
-    O3_CPU uut{champsim::core_builder{}
-                   .ifetch_buffer_size(16)
-                   .decode_buffer_size(16)
-                   .dispatch_buffer_size(16)
-                   .register_file_size(128)
-                   .rob_size(16)
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)
-                   .decode_latency(decode_latency)
-                   .dispatch_latency(dispatch_latency)
-                   .schedule_latency(schedule_latency)
-                   .execute_latency(execute_latency)
-                   .execute_width(champsim::bandwidth::maximum_type{1})
-                   .decode_width(champsim::bandwidth::maximum_type{1})
-                   .dispatch_width(champsim::bandwidth::maximum_type{1})
-                   .fetch_width(champsim::bandwidth::maximum_type{1})
-                   .retire_width(champsim::bandwidth::maximum_type{1})};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t100_core_0", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("ifetch_buffer_size", static_cast<uint32_t>(16))
+                   .add_parameter("decode_buffer_size", static_cast<uint32_t>(16))
+                   .add_parameter("dispatch_buffer_size", static_cast<uint32_t>(16))
+                   .add_parameter("register_file_size", static_cast<uint32_t>(128))
+                   .add_parameter("rob_size", static_cast<uint32_t>(16))
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))
+                   .add_parameter("decode_latency", static_cast<unsigned>(decode_latency))
+                   .add_parameter("dispatch_latency", static_cast<unsigned>(dispatch_latency))
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("execute_latency", static_cast<unsigned>(execute_latency))
+                   .add_parameter("execute_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("decode_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("dispatch_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("fetch_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{1})};
     uut.warmup = false;
     std::vector test_instructions(num_instrs, champsim::test::instruction_with_ip(1));
 
@@ -69,23 +69,23 @@ SCENARIO("The minimum specified core latency is 1")
     const auto num_instrs = GENERATE(1u, 2u, 5u);
     do_nothing_MRC mock_L1I, mock_L1D;
 
-    O3_CPU uut{champsim::core_builder{}
-                   .ifetch_buffer_size(16)
-                   .decode_buffer_size(16)
-                   .dispatch_buffer_size(16)
-                   .register_file_size(128)
-                   .rob_size(16)
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)
-                   .decode_latency(decode_latency)
-                   .dispatch_latency(dispatch_latency)
-                   .schedule_latency(schedule_latency)
-                   .execute_latency(execute_latency)
-                   .execute_width(champsim::bandwidth::maximum_type{1})
-                   .decode_width(champsim::bandwidth::maximum_type{1})
-                   .dispatch_width(champsim::bandwidth::maximum_type{1})
-                   .fetch_width(champsim::bandwidth::maximum_type{1})
-                   .retire_width(champsim::bandwidth::maximum_type{1})};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t100_core_1", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("ifetch_buffer_size", static_cast<uint32_t>(16))
+                   .add_parameter("decode_buffer_size", static_cast<uint32_t>(16))
+                   .add_parameter("dispatch_buffer_size", static_cast<uint32_t>(16))
+                   .add_parameter("register_file_size", static_cast<uint32_t>(128))
+                   .add_parameter("rob_size", static_cast<uint32_t>(16))
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))
+                   .add_parameter("decode_latency", static_cast<unsigned>(decode_latency))
+                   .add_parameter("dispatch_latency", static_cast<unsigned>(dispatch_latency))
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("execute_latency", static_cast<unsigned>(execute_latency))
+                   .add_parameter("execute_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("decode_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("dispatch_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("fetch_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{1})};
     uut.warmup = false;
     std::vector test_instructions(num_instrs, champsim::test::instruction_with_ip(1));
 

@@ -60,7 +60,7 @@ breathe_projects = {
 breathe_default_project = project
 
 # -- sphinxcontrib.bibtex configuration --------------------------------------
-bibtex_bibfiles = ['../../PUBLICATIONS_USING_CHAMPSIM.bib']
+bibtex_bibfiles = ['../PUBLICATIONS_USING_CHAMPSIM.bib']
 
 import pybtex.plugin
 from pybtex.style.sorting import BaseSortingStyle

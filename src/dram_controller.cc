@@ -27,27 +27,30 @@
 #include "util/span.h"
 #include "util/units.h"
 
-MEMORY_CONTROLLER::MEMORY_CONTROLLER(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t t_rp, std::size_t t_rcd,
-                                     std::size_t t_cas, std::size_t t_ras, champsim::chrono::microseconds refresh_period, std::vector<channel_type*>&& ul,
-                                     std::size_t rq_size, std::size_t wq_size, std::size_t chans, champsim::data::bytes chan_width, std::size_t rows,
-                                     std::size_t columns, std::size_t ranks, std::size_t bankgroups, std::size_t banks, std::size_t refreshes_per_period)
-    : champsim::operable(mc_period), queues(std::move(ul)), channel_width(chan_width),
-      address_mapping(chan_width, BLOCK_SIZE / chan_width.count(), chans, bankgroups, banks, columns, ranks, rows), data_bus_period(dbus_period)
+MEMORY_CONTROLLER::MEMORY_CONTROLLER(champsim::modules::ModuleBuilder builder)
+    : champsim::modules::memory_controller_module(builder.get_parameter<champsim::chrono::picoseconds>("mc_period")), queues(std::move(builder.get_parameter<std::vector<channel_type*>>("ul_channels"))),
+      channel_width(builder.get_parameter<champsim::data::bytes>("channel_width")),
+      address_mapping(channel_width, BLOCK_SIZE / channel_width.count(), builder.get_parameter<std::size_t>("channels"), builder.get_parameter<std::size_t>("bankgroups"),
+                      builder.get_parameter<std::size_t>("banks"), builder.get_parameter<std::size_t>("columns"), builder.get_parameter<std::size_t>("ranks"),
+                      builder.get_parameter<std::size_t>("rows")), data_bus_period(builder.get_parameter<champsim::chrono::picoseconds>("dbus_period"))
 {
-  for (std::size_t i{0}; i < chans; ++i) {
-    channels.emplace_back(dbus_period, mc_period, t_rp, t_rcd, t_cas, t_ras, refresh_period, refreshes_per_period, chan_width, rq_size, wq_size,
-                          address_mapping);
+  auto num_channels = address_mapping.channels();
+  for (std::size_t i{0}; i < num_channels; ++i) {
+    channels.emplace_back(data_bus_period, builder.get_parameter<champsim::chrono::picoseconds>("mc_period"), builder.get_parameter<std::size_t>("n_rp"), builder.get_parameter<std::size_t>("n_rcd"),
+                          builder.get_parameter<std::size_t>("n_cas"), builder.get_parameter<std::size_t>("n_ras"),
+                          builder.get_parameter<champsim::chrono::microseconds>("refresh_period"), builder.get_parameter<std::size_t>("refreshes_per_period"),
+                          channel_width, builder.get_parameter<std::size_t>("rq_size"), builder.get_parameter<std::size_t>("wq_size"), address_mapping);
   }
 }
 
-DRAM_CHANNEL::DRAM_CHANNEL(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t t_rp, std::size_t t_rcd,
-                           std::size_t t_cas, std::size_t t_ras, champsim::chrono::microseconds refresh_period, std::size_t refreshes_per_period,
+DRAM_CHANNEL::DRAM_CHANNEL(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t n_rp, std::size_t n_rcd,
+                           std::size_t n_cas, std::size_t n_ras, champsim::chrono::microseconds refresh_period, std::size_t refreshes_per_period,
                            champsim::data::bytes width, std::size_t rq_size, std::size_t wq_size, DRAM_ADDRESS_MAPPING addr_mapper)
     : champsim::operable(mc_period), address_mapping(addr_mapper), WQ{wq_size}, RQ{rq_size}, channel_width(width),
-      DRAM_ROWS_PER_REFRESH(address_mapping.rows() / refreshes_per_period), tRP(t_rp * mc_period), tRCD(t_rcd * mc_period), tCAS(t_cas * mc_period),
-      tRAS(t_ras * mc_period), tREF(refresh_period / refreshes_per_period),
+      DRAM_ROWS_PER_REFRESH(address_mapping.rows() / refreshes_per_period), tRP(n_rp * mc_period), tRCD(n_rcd * mc_period), tCAS(n_cas * mc_period),
+      tRAS(n_ras * mc_period), tREF(refresh_period / refreshes_per_period),
       tRFC(std::chrono::duration_cast<champsim::chrono::clock::duration>(
-          std::sqrt(champsim::data::bits_per_byte * (double)champsim::data::gibibytes{density()}.count()) * mc_period * t_ras)),
+          std::sqrt(champsim::data::bits_per_byte * (double)champsim::data::gibibytes{density()}.count()) * mc_period * n_ras)),
       DRAM_DBUS_TURN_AROUND_TIME(tRAS),
       DRAM_DBUS_RETURN_TIME(std::chrono::duration_cast<champsim::chrono::clock::duration>(dbus_period * address_mapping.prefetch_size)),
       DRAM_DBUS_BANKGROUP_STALL(
@@ -398,8 +401,8 @@ void MEMORY_CONTROLLER::begin_phase()
   for (auto* ul : queues) {
     channel_type::stats_type ul_new_roi_stats;
     channel_type::stats_type ul_new_sim_stats;
-    ul->roi_stats = ul_new_roi_stats;
-    ul->sim_stats = ul_new_sim_stats;
+    ul->get_roi_stats() = ul_new_roi_stats;
+    ul->get_sim_stats() = ul_new_sim_stats;
   }
 }
 
@@ -496,25 +499,25 @@ void MEMORY_CONTROLLER::initiate_requests()
 {
   // Initiate read requests
   for (auto* ul : queues) {
-    for (auto q : {std::ref(ul->RQ), std::ref(ul->PQ)}) {
+    for (auto q : {std::ref(ul->get_rq()), std::ref(ul->get_pq())}) {
       auto [begin, end] = champsim::get_span_p(std::cbegin(q.get()), std::cend(q.get()), [ul, this](const auto& pkt) { return this->add_rq(pkt, ul); });
       q.get().erase(begin, end);
     }
 
     // Initiate write requests
-    auto [wq_begin, wq_end] = champsim::get_span_p(std::cbegin(ul->WQ), std::cend(ul->WQ), [this](const auto& pkt) { return this->add_wq(pkt); });
-    ul->WQ.erase(wq_begin, wq_end);
+    auto [wq_begin, wq_end] = champsim::get_span_p(std::cbegin(ul->get_wq()), std::cend(ul->get_wq()), [this](const auto& pkt) { return this->add_wq(pkt); });
+    ul->get_wq().erase(wq_begin, wq_end);
   }
 }
 
-DRAM_CHANNEL::request_type::request_type(const typename champsim::channel::request_type& req)
+DRAM_CHANNEL::request_type::request_type(const champsim::request& req)
     : pf_metadata(req.pf_metadata), address(req.address), v_address(req.address), data(req.data), instr_depend_on_me(req.instr_depend_on_me)
 {
   asid[0] = req.asid[0];
   asid[1] = req.asid[1];
 }
 
-bool MEMORY_CONTROLLER::add_rq(const request_type& packet, champsim::channel* ul)
+bool MEMORY_CONTROLLER::add_rq(const request_type& packet, champsim::modules::channel_module* ul)
 {
   auto& channel = channels[address_mapping.get_channel(packet.address)];
 
@@ -525,7 +528,7 @@ bool MEMORY_CONTROLLER::add_rq(const request_type& packet, champsim::channel* ul
     rq_it->value().scheduled = false;
     rq_it->value().ready_time = current_time;
     if (packet.response_requested)
-      rq_it->value().to_return = {&ul->returned};
+      rq_it->value().to_return = {&ul->get_returned()};
 
     return true;
   }
@@ -633,3 +636,23 @@ void DRAM_CHANNEL::print_deadlock()
   champsim::range_print_deadlock(WQ, "WQ", q_writer, q_entry_pack);
 }
 // LCOV_EXCL_STOP
+
+champsim::modules::memory_controller_module::stats_type MEMORY_CONTROLLER::get_sim_stats(std::size_t channel_no) const
+{
+  if (channel_no < std::size(channels)) {
+    return channels[channel_no].sim_stats;
+  } else {
+    throw std::out_of_range("Channel number out of range");
+  }
+}
+
+champsim::modules::memory_controller_module::stats_type MEMORY_CONTROLLER::get_roi_stats(std::size_t channel_no) const
+{
+  if (channel_no < std::size(channels)) {
+    return channels[channel_no].roi_stats;
+  } else {
+    throw std::out_of_range("Channel number out of range");
+  }
+}
+
+champsim::modules::memory_controller_module::register_module<MEMORY_CONTROLLER> register_memory_controller_module("DEFAULT_MEMORY_CONTROLLER");

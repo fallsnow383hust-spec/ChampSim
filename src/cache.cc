@@ -32,63 +32,14 @@
 #include "util/bits.h"
 #include "util/span.h"
 
-CACHE::CACHE(CACHE&& other)
-    : operable(other),
-
-      upper_levels(std::move(other.upper_levels)), lower_level(std::move(other.lower_level)), lower_translate(std::move(other.lower_translate)),
-
-      cpu(other.cpu), NAME(std::move(other.NAME)), NUM_SET(other.NUM_SET), NUM_WAY(other.NUM_WAY), MSHR_SIZE(other.MSHR_SIZE), PQ_SIZE(other.PQ_SIZE),
-      HIT_LATENCY(other.HIT_LATENCY), FILL_LATENCY(other.FILL_LATENCY), OFFSET_BITS(other.OFFSET_BITS), block(std::move(other.block)), MAX_TAG(other.MAX_TAG),
-      MAX_FILL(other.MAX_FILL), prefetch_as_load(other.prefetch_as_load), match_offset_bits(other.match_offset_bits), virtual_prefetch(other.virtual_prefetch),
-      pref_activate_mask(std::move(other.pref_activate_mask)),
-
-      sim_stats(std::move(other.sim_stats)), roi_stats(std::move(other.roi_stats)),
-
-      pref_module_pimpl(std::move(other.pref_module_pimpl)), repl_module_pimpl(std::move(other.repl_module_pimpl))
+CACHE::CACHE(CACHE&& /*other*/) : champsim::modules::cache_module(champsim::chrono::picoseconds{})
 {
-  pref_module_pimpl->bind(this);
-  repl_module_pimpl->bind(this);
+  assert(false && "CACHE move constructor called, but this is not expected to be used in a way that requires moving. Please report this to the developers.");
 }
 
-auto CACHE::operator=(CACHE&& other) -> CACHE&
+auto CACHE::operator=(CACHE&& /*other*/) -> CACHE&
 {
-  this->clock_period = other.clock_period;
-  this->current_time = other.current_time;
-  this->warmup = other.warmup;
-
-  this->upper_levels = std::move(other.upper_levels);
-  this->lower_level = std::move(other.lower_level);
-  this->lower_translate = std::move(other.lower_translate);
-
-  this->cpu = other.cpu;
-  this->NAME = std::move(other.NAME);
-  this->NUM_SET = other.NUM_SET;
-  this->NUM_WAY = other.NUM_WAY;
-  ;
-  this->MSHR_SIZE = other.MSHR_SIZE;
-  ;
-  this->PQ_SIZE = other.PQ_SIZE;
-  this->HIT_LATENCY = other.HIT_LATENCY;
-  this->FILL_LATENCY = other.FILL_LATENCY;
-  this->OFFSET_BITS = other.OFFSET_BITS;
-  ;
-  this->block = std::move(other.block);
-  this->MAX_TAG = other.MAX_TAG;
-  this->MAX_FILL = other.MAX_FILL;
-  this->prefetch_as_load = other.prefetch_as_load;
-  this->match_offset_bits = other.match_offset_bits;
-  this->virtual_prefetch = other.virtual_prefetch;
-  this->pref_activate_mask = std::move(other.pref_activate_mask);
-
-  this->sim_stats = std::move(other.sim_stats);
-  this->roi_stats = std::move(other.roi_stats);
-
-  this->pref_module_pimpl = std::move(other.pref_module_pimpl);
-  this->repl_module_pimpl = std::move(other.repl_module_pimpl);
-
-  pref_module_pimpl->bind(this);
-  repl_module_pimpl->bind(this);
-
+  assert(false && "CACHE move assignment operator called, but this is not expected to be used in a way that requires moving. Please report this to the developers.");
   return *this;
 }
 
@@ -391,7 +342,7 @@ bool CACHE::handle_write(const tag_lookup_type& handle_pkt)
 }
 
 template <bool UpdateRequest>
-auto CACHE::initiate_tag_check(champsim::channel* ul)
+auto CACHE::initiate_tag_check(champsim::modules::channel_module* ul)
 {
   return [time = current_time + (warmup ? champsim::chrono::clock::duration{} : HIT_LATENCY), ul](const auto& entry) {
     CACHE::tag_lookup_type retval{entry};
@@ -399,7 +350,7 @@ auto CACHE::initiate_tag_check(champsim::channel* ul)
 
     if constexpr (UpdateRequest) {
       if (entry.response_requested) {
-        retval.to_return = {&ul->returned};
+        retval.to_return = {&ul->get_returned()};
       }
     } else {
       (void)ul; // supress warning about ul being unused
@@ -426,15 +377,15 @@ long CACHE::operate()
   };
 
   // Finish returns
-  std::for_each(std::cbegin(lower_level->returned), std::cend(lower_level->returned), [this](const auto& pkt) { this->finish_packet(pkt); });
-  progress += std::distance(std::cbegin(lower_level->returned), std::cend(lower_level->returned));
-  lower_level->returned.clear();
+  std::for_each(std::cbegin(lower_level->get_returned()), std::cend(lower_level->get_returned()), [this](const auto& pkt) { this->finish_packet(pkt); });
+  progress += std::distance(std::cbegin(lower_level->get_returned()), std::cend(lower_level->get_returned()));
+  lower_level->get_returned().clear();
 
   // Finish translations
   if (lower_translate != nullptr) {
-    std::for_each(std::cbegin(lower_translate->returned), std::cend(lower_translate->returned), [this](const auto& pkt) { this->finish_translation(pkt); });
-    progress += std::distance(std::cbegin(lower_translate->returned), std::cend(lower_translate->returned));
-    lower_translate->returned.clear();
+    std::for_each(std::cbegin(lower_translate->get_returned()), std::cend(lower_translate->get_returned()), [this](const auto& pkt) { this->finish_translation(pkt); });
+    progress += std::distance(std::cbegin(lower_translate->get_returned()), std::cend(lower_translate->get_returned()));
+    lower_translate->get_returned().clear();
   }
 
   // Perform fills
@@ -468,7 +419,7 @@ long CACHE::operate()
           : champsim::bandwidth::maximum_type{};
 
   for (auto* ul : upper_levels) {
-    for (auto q : {std::ref(ul->WQ), std::ref(ul->RQ), std::ref(ul->PQ)}) {
+    for (auto q : {std::ref(ul->get_wq()), std::ref(ul->get_rq()), std::ref(ul->get_pq())}) {
       // this needs to be in this loop, we need to ensure that for cases where bandwidth doesn't divide nicely across upstreams,
       // we don't accidentally consume more bandwidth than expected
       champsim::bandwidth per_upper_tag_bw{std::min(per_upper_bandwidth, champsim::bandwidth::maximum_type{initiate_tag_bw.amount_remaining()})};
@@ -787,50 +738,61 @@ std::vector<double> CACHE::get_wq_occupancy_ratio() const { return ::occupancy_r
 
 std::vector<double> CACHE::get_pq_occupancy_ratio() const { return ::occupancy_ratio_vec(get_pq_occupancy(), get_pq_size()); }
 
-void CACHE::impl_prefetcher_initialize() const { pref_module_pimpl->impl_prefetcher_initialize(); }
+void CACHE::impl_prefetcher_initialize() const { std::for_each(pref_module_pimpl.begin(), pref_module_pimpl.end(), [](const auto pref){pref->prefetcher_initialize();}); }
 
 uint32_t CACHE::impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
                                               uint32_t metadata_in) const
 {
-  return pref_module_pimpl->impl_prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_in);
+  uint32_t metadata_out = metadata_in;
+  std::for_each(pref_module_pimpl.begin(), pref_module_pimpl.end(), [&](const auto pref)
+    {metadata_out = pref->prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_out);});
+  return(metadata_out);
 }
 
 uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
                                            uint32_t metadata_in) const
 {
-  return pref_module_pimpl->impl_prefetcher_cache_fill(addr, set, way, prefetch, evicted_addr, metadata_in);
+  uint32_t metadata_out = metadata_in;
+  std::for_each(pref_module_pimpl.begin(), pref_module_pimpl.end(), [&](const auto pref)
+  {metadata_out = pref->prefetcher_cache_fill(addr, set, way, prefetch, evicted_addr, metadata_out);});
+  return(metadata_out);
 }
 
-void CACHE::impl_prefetcher_cycle_operate() const { pref_module_pimpl->impl_prefetcher_cycle_operate(); }
+void CACHE::impl_prefetcher_cycle_operate() const { std::for_each(pref_module_pimpl.begin(), pref_module_pimpl.end(), [](const auto pref){pref->prefetcher_cycle_operate();}); }
 
-void CACHE::impl_prefetcher_final_stats() const { pref_module_pimpl->impl_prefetcher_final_stats(); }
+void CACHE::impl_prefetcher_final_stats() const { std::for_each(pref_module_pimpl.begin(), pref_module_pimpl.end(), [](const auto pref){pref->prefetcher_final_stats();}); }
 
 void CACHE::impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) const
 {
-  pref_module_pimpl->impl_prefetcher_branch_operate(ip, branch_type, branch_target);
+  std::for_each(pref_module_pimpl.begin(), pref_module_pimpl.end(), [&](const auto pref){pref->prefetcher_branch_operate(ip, branch_type, branch_target);});
 }
 
-void CACHE::impl_initialize_replacement() const { repl_module_pimpl->impl_initialize_replacement(); }
+void CACHE::impl_initialize_replacement() const { std::for_each(repl_module_pimpl.begin(), repl_module_pimpl.end(), [](const auto repl){repl->initialize_replacement();}); }
 
 long CACHE::impl_find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const BLOCK* current_set, champsim::address ip, champsim::address full_addr,
                              access_type type) const
 {
-  return repl_module_pimpl->impl_find_victim(triggering_cpu, instr_id, set, current_set, ip, full_addr, type);
+  long victim = -1;
+
+  std::for_each(repl_module_pimpl.begin(), repl_module_pimpl.end(), [&](const auto repl){long temp_victim = repl->find_victim(triggering_cpu, instr_id, set, current_set, ip, full_addr, type); if(temp_victim != -1) victim = temp_victim;});
+
+  assert(victim >= 0);
+  return(victim);
 }
 
 void CACHE::impl_update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
                                           champsim::address victim_addr, access_type type, bool hit) const
 {
-  repl_module_pimpl->impl_update_replacement_state(triggering_cpu, set, way, full_addr, ip, victim_addr, type, hit);
+  std::for_each(repl_module_pimpl.begin(), repl_module_pimpl.end(), [&](const auto repl){repl->update_replacement_state(triggering_cpu, set, way, full_addr, ip, victim_addr, type, hit);});
 }
 
 void CACHE::impl_replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
                                         champsim::address victim_addr, access_type type) const
 {
-  repl_module_pimpl->impl_replacement_cache_fill(triggering_cpu, set, way, full_addr, ip, victim_addr, type);
+  std::for_each(repl_module_pimpl.begin(), repl_module_pimpl.end(), [&](const auto repl){repl->replacement_cache_fill(triggering_cpu, set, way, full_addr, ip, victim_addr, type);});
 }
 
-void CACHE::impl_replacement_final_stats() const { repl_module_pimpl->impl_replacement_final_stats(); }
+void CACHE::impl_replacement_final_stats() const { std::for_each(repl_module_pimpl.begin(), repl_module_pimpl.end(), [](const auto repl){repl->replacement_final_stats();}); }
 
 void CACHE::initialize()
 {
@@ -852,8 +814,8 @@ void CACHE::begin_phase()
   for (auto* ul : upper_levels) {
     channel_type::stats_type ul_new_roi_stats;
     channel_type::stats_type ul_new_sim_stats;
-    ul->roi_stats = ul_new_roi_stats;
-    ul->sim_stats = ul_new_sim_stats;
+    ul->get_roi_stats() = ul_new_roi_stats;
+    ul->get_sim_stats() = ul_new_sim_stats;
   }
 }
 
@@ -874,19 +836,21 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.pf_fill = sim_stats.pf_fill;
 
   for (auto* ul : upper_levels) {
-    ul->roi_stats.RQ_ACCESS = ul->sim_stats.RQ_ACCESS;
-    ul->roi_stats.RQ_FULL = ul->sim_stats.RQ_FULL;
-    ul->roi_stats.RQ_TO_CACHE = ul->sim_stats.RQ_TO_CACHE;
+    ul->get_roi_stats().RQ_ACCESS = ul->get_sim_stats().RQ_ACCESS;
+    ul->get_roi_stats().RQ_FULL = ul->get_sim_stats().RQ_FULL;
+    ul->get_roi_stats().RQ_TO_CACHE = ul->get_sim_stats().RQ_TO_CACHE;
 
-    ul->roi_stats.PQ_ACCESS = ul->sim_stats.PQ_ACCESS;
-    ul->roi_stats.PQ_FULL = ul->sim_stats.PQ_FULL;
-    ul->roi_stats.PQ_TO_CACHE = ul->sim_stats.PQ_TO_CACHE;
+    ul->get_roi_stats().PQ_ACCESS = ul->get_sim_stats().PQ_ACCESS;
+    ul->get_roi_stats().PQ_FULL = ul->get_sim_stats().PQ_FULL;
+    ul->get_roi_stats().PQ_TO_CACHE = ul->get_sim_stats().PQ_TO_CACHE;
 
-    ul->roi_stats.WQ_ACCESS = ul->sim_stats.WQ_ACCESS;
-    ul->roi_stats.WQ_FULL = ul->sim_stats.WQ_FULL;
-    ul->roi_stats.WQ_TO_CACHE = ul->sim_stats.WQ_TO_CACHE;
+    ul->get_roi_stats().WQ_ACCESS = ul->get_sim_stats().WQ_ACCESS;
+    ul->get_roi_stats().WQ_FULL = ul->get_sim_stats().WQ_FULL;
+    ul->get_roi_stats().WQ_TO_CACHE = ul->get_sim_stats().WQ_TO_CACHE;
   }
 }
+
+void CACHE::end_simulation() { impl_prefetcher_final_stats(); impl_replacement_final_stats(); }
 
 template <typename T>
 bool CACHE::should_activate_prefetcher(const T& pkt) const
@@ -919,9 +883,11 @@ void CACHE::print_deadlock()
   };
 
   for (auto* ul : upper_levels) {
-    champsim::range_print_deadlock(ul->RQ, NAME + "_RQ", q_writer, q_entry_pack);
-    champsim::range_print_deadlock(ul->WQ, NAME + "_WQ", q_writer, q_entry_pack);
-    champsim::range_print_deadlock(ul->PQ, NAME + "_PQ", q_writer, q_entry_pack);
+    champsim::range_print_deadlock(ul->get_rq(), NAME + "_RQ", q_writer, q_entry_pack);
+    champsim::range_print_deadlock(ul->get_wq(), NAME + "_WQ", q_writer, q_entry_pack);
+    champsim::range_print_deadlock(ul->get_pq(), NAME + "_PQ", q_writer, q_entry_pack);
   }
 }
 // LCOV_EXCL_STOP
+
+champsim::modules::cache_module::register_module<CACHE> default_cache_module("DEFAULT_CACHE");

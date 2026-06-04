@@ -5,13 +5,14 @@
 #include <random>
 
 #include "champsim.h"
+champsim::modules::replacement::register_module<ship> ship_register("ship");
 
 // initialize replacement state
-ship::ship(CACHE* cache)
-    : replacement(cache), NUM_SET(cache->NUM_SET), NUM_WAY(cache->NUM_WAY),
+ship::ship(champsim::modules::ModuleBuilder builder)
+    : NUM_SET(builder.get_parent<champsim::modules::cache_module>()->num_sets()), NUM_WAY(builder.get_parent<champsim::modules::cache_module>()->num_ways()),
       sampler(champsim::msl::get_num_samples(NUM_SET) * NUM_CPUS * static_cast<std::size_t>(NUM_WAY)),
       rrpv_values(static_cast<std::size_t>(NUM_SET * NUM_WAY), maxRRPV), set_categorizer(champsim::msl::get_sample_rate(NUM_SET)),
-      sampler_tag_bits(cache->OFFSET_BITS)
+      sampler_tag_bits(builder.get_parent<champsim::modules::cache_module>()->get_offset_bits())
 {
   std::generate_n(std::back_inserter(SHCT), NUM_CPUS, []() -> typename decltype(SHCT)::value_type { return {}; });
 }
@@ -38,7 +39,7 @@ long ship::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, con
 
 // called on every cache hit and cache fill
 void ship::update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                    champsim::address victim_addr, access_type type, uint8_t hit)
+                                    champsim::address victim_addr, access_type type, bool hit)
 {
   using namespace champsim::data::data_literals;
 

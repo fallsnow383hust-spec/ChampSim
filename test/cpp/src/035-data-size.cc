@@ -171,7 +171,7 @@ TEST_CASE("A byte size prints something to libfmt")
 {
   using namespace champsim::data::data_literals;
   REQUIRE_THAT(fmt::format("{}", 5_B), Catch::Matchers::Matches("5 B"));
-  REQUIRE_THAT(fmt::format("{}", 5_kiB), Catch::Matchers::Matches("5 kiB"));
+  REQUIRE_THAT(fmt::format("{}", 5_kiB), Catch::Matchers::Matches("5 KiB"));
   REQUIRE_THAT(fmt::format("{}", 5_MiB), Catch::Matchers::Matches("5 MiB"));
   REQUIRE_THAT(fmt::format("{}", 5_GiB), Catch::Matchers::Matches("5 GiB"));
   REQUIRE_THAT(fmt::format("{}", 5_TiB), Catch::Matchers::Matches("5 TiB"));

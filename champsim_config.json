@@ -1,4 +1,5 @@
 {
+  "_description": "Sample/documentation config. Does not represent a reasonable system; intended only to illustrate config file structure.",
   "executable_name": "champsim",
   "block_size": 64,
   "page_size": 4096,
@@ -28,7 +29,7 @@
       "dispatch_latency": 1,
       "schedule_latency": 0,
       "execute_latency": 0,
-      "branch_predictor": "bimodal",
+      "branch_predictor": "hashed_perceptron",
       "btb": "basic_btb"
     }
   ],
@@ -84,7 +85,7 @@
     "prefetch_as_load": false,
     "virtual_prefetch": false,
     "prefetch_activate": "LOAD,PREFETCH",
-    "prefetcher": "no"
+    "prefetcher": "spp_dev"
   },
 
   "ITLB": {
@@ -170,10 +171,10 @@
     "channel_width": 8,
     "wq_size": 64,
     "rq_size": 64,
-    "tCAS": 24,
-    "tRCD": 24,
-    "tRP": 24,
-    "tRAS": 52,
+    "nCAS": 24,
+    "nRCD": 24,
+    "nRP": 24,
+    "nRAS": 52,
     "refresh_period": 32,
     "refreshes_per_period": 8192
   },
@@ -181,7 +182,7 @@
   "virtual_memory": {
     "pte_page_size": 4096,
     "num_levels": 5,
-    "minor_fault_penalty": 200,
+    "minor_fault_penalty": 50,
     "randomization": 1
   }
 }

@@ -69,7 +69,12 @@ void RegisterAllocator::free_register(PHYSICAL_REGISTER_ID physreg)
   free_registers.push(physreg);
 }
 
-bool RegisterAllocator::isValid(PHYSICAL_REGISTER_ID physreg) const { return physical_register_file.at(physreg).valid; }
+bool RegisterAllocator::isValid(PHYSICAL_REGISTER_ID physreg) const
+{
+  if (physreg < 0 || static_cast<size_t>(physreg) >= physical_register_file.size())
+    return false;
+  return physical_register_file[physreg].valid;
+}
 
 bool RegisterAllocator::isAllocated(PHYSICAL_REGISTER_ID archreg) const { return frontend_RAT[archreg] != -1; }
 

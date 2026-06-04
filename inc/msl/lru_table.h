@@ -66,6 +66,21 @@ constexpr bool cmp_equal(T t, U u) noexcept
 }
 } // namespace detail
 
+/**
+ * A set-associative table with LRU eviction.
+ *
+ * Elements are placed into sets using a set projection function object and matched
+ * within a set using a tag projection function object. By default, these call
+ * ``.index()`` and ``.tag()`` member functions on the element type. The number of
+ * sets must be a power of 2.
+ *
+ * This is useful for building hardware tables such as BTB entries, stride tracker
+ * tables, and signature tables. See ``ip_stride`` and ``basic_btb`` for examples.
+ *
+ * \tparam T The element type stored in the table.
+ * \tparam SetProj A function object that projects an element to a set index. Defaults to calling ``T::index()``.
+ * \tparam TagProj A function object that projects an element to a tag for matching. Defaults to calling ``T::tag()``.
+ */
 template <typename T, typename SetProj = detail::table_indexer<T>, typename TagProj = detail::table_tagger<T>>
 class lru_table
 {
@@ -125,6 +140,15 @@ private:
   }
 
 public:
+  /**
+   * Look up an element in the table by set and tag.
+   *
+   * If a matching element is found, its LRU timestamp is updated and the
+   * element is returned. Otherwise returns ``std::nullopt``.
+   *
+   * \param elem An element whose set and tag projections identify the lookup.
+   * \return The matching element, or ``std::nullopt`` on a miss.
+   */
   std::optional<value_type> check_hit(const value_type& elem)
   {
     auto [set_begin, set_end] = get_set_span(elem);
@@ -138,6 +162,14 @@ public:
     return hit->data;
   }
 
+  /**
+   * Insert or update an element in the table.
+   *
+   * If an element with a matching tag already exists in the set, it is updated
+   * in place. Otherwise the LRU element in the set is evicted and replaced.
+   *
+   * \param elem The element to insert.
+   */
   void fill(const value_type& elem)
   {
     auto tag = tag_projection(elem);
@@ -153,6 +185,15 @@ public:
     }
   }
 
+  /**
+   * Remove an element from the table.
+   *
+   * If a matching element is found, it is removed and returned.
+   * Otherwise returns ``std::nullopt``.
+   *
+   * \param elem An element whose set and tag projections identify the entry to remove.
+   * \return The removed element, or ``std::nullopt`` if not found.
+   */
   std::optional<value_type> invalidate(const value_type& elem)
   {
     auto [set_begin, set_end] = get_set_span(elem);
@@ -165,6 +206,14 @@ public:
     return std::exchange(*hit, {}).data;
   }
 
+  /**
+   * Construct an LRU table.
+   *
+   * \param sets The number of sets. Must be a positive power of 2.
+   * \param ways The number of ways per set.
+   * \param set_proj The function object used to compute the set index from an element.
+   * \param tag_proj The function object used to compute the tag from an element.
+   */
   lru_table(std::size_t sets, std::size_t ways, SetProj set_proj, TagProj tag_proj)
       : set_projection(set_proj), tag_projection(tag_proj), NUM_SET(static_cast<diff_type>(sets)), NUM_WAY(static_cast<diff_type>(ways)), block(sets * ways)
   {

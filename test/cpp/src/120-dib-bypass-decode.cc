@@ -20,18 +20,18 @@ SCENARIO("The same instruction hits the DIB on the second time")
     const unsigned int execute_latency = 2;
     do_nothing_MRC mock_L1I{fetch_latency}, mock_L1D;
 
-    O3_CPU uut{champsim::core_builder{champsim::defaults::default_core}
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)
-                   .decode_latency(decode_latency)
-                   .dispatch_latency(dispatch_latency)
-                   .schedule_latency(schedule_latency)
-                   .execute_latency(execute_latency)
-                   .execute_width(champsim::bandwidth::maximum_type{1})
-                   .decode_width(champsim::bandwidth::maximum_type{1})
-                   .dispatch_width(champsim::bandwidth::maximum_type{1})
-                   .fetch_width(champsim::bandwidth::maximum_type{1})
-                   .retire_width(champsim::bandwidth::maximum_type{1})};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t120_core", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))
+                   .add_parameter("decode_latency", static_cast<unsigned>(decode_latency))
+                   .add_parameter("dispatch_latency", static_cast<unsigned>(dispatch_latency))
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("execute_latency", static_cast<unsigned>(execute_latency))
+                   .add_parameter("execute_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("decode_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("dispatch_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("fetch_width", champsim::bandwidth::maximum_type{1})
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{1})};
     uut.warmup = false;
     std::vector test_instructions(1, champsim::test::instruction_with_ip(1));
 

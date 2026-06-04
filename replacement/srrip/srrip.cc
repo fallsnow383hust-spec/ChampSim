@@ -6,9 +6,11 @@
 
 #include "cache.h"
 
-srrip::srrip(CACHE* cache) : srrip(cache, cache->NUM_SET, cache->NUM_WAY) {}
+champsim::modules::replacement::register_module<srrip> srrip_register("srrip");
 
-srrip::srrip(CACHE* cache, long sets_, long ways_) : replacement(cache)
+srrip::srrip(champsim::modules::ModuleBuilder builder) : srrip(builder.get_parent<champsim::modules::cache_module>(), builder.get_parent<champsim::modules::cache_module>()->num_sets(), builder.get_parent<champsim::modules::cache_module>()->num_ways()) {}
+
+srrip::srrip(champsim::modules::cache_module* cache, long sets_, long ways_)
 {
   std::generate_n(std::back_inserter(sets), sets_, [ways = ways_] { return srrip_set_helper{ways}; });
 }
@@ -20,11 +22,13 @@ long srrip::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, co
   return sets.at(static_cast<std::size_t>(set)).victim();
 }
 
-// called on every cache hit and cache fill
+// called on every cache hit and cache miss
 void srrip::update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                     champsim::address victim_addr, access_type type, uint8_t hit)
+                                     champsim::address victim_addr, access_type type, bool hit)
 {
-  sets.at(static_cast<std::size_t>(set)).update(way, hit);
+  // On a miss, way is past-the-end and not valid for indexing
+  if (hit)
+    sets.at(static_cast<std::size_t>(set)).update(way, hit);
 }
 
 srrip_set_helper::srrip_set_helper(long ways) : rrpv_values(static_cast<std::size_t>(ways), maxRRPV) {}

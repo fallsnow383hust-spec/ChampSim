@@ -12,33 +12,18 @@ SCENARIO("The number of issued steps matches the virtual memory levels")
   GIVEN("A 5-level virtual memory")
   {
     constexpr std::size_t levels = 5;
-    MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                           champsim::chrono::picoseconds{6400},
-                           std::size_t{18},
-                           std::size_t{18},
-                           std::size_t{18},
-                           std::size_t{38},
-                           champsim::chrono::microseconds{64000},
-                           {},
-                           64,
-                           64,
-                           1,
-                           champsim::data::bytes{8},
-                           1024,
-                           1024,
-                           4,
-                           4,
-                           4,
-                           8192};
-    VirtualMemory vmem{champsim::data::bytes{1 << 12}, levels, champsim::chrono::nanoseconds{640}, dram};
+    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"t600_dram_0", "DEFAULT_MEMORY_CONTROLLER", champsim::defaults::default_memory_controller()}};
+    VirtualMemory vmem{champsim::modules::ModuleBuilder{"t600_vmem_0", "DEFAULT_VMEM", champsim::defaults::default_vmem()}
+        .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))
+        .add_parameter("page_table_levels", levels)
+        .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{640000})};
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    PageTableWalker uut{champsim::ptw_builder{champsim::defaults::default_ptw}
-                            .name("600a-uut")
-                            .clock_period(champsim::chrono::picoseconds{3200})
-                            .upper_levels({&mock_ul.queues})
-                            .lower_level(&mock_ll.queues)
-                            .virtual_memory(&vmem)};
+    PageTableWalker uut{champsim::modules::ModuleBuilder{"t600_ptw_0", "DEFAULT_PTW", champsim::defaults::default_ptw()}
+                            .add_parameter("clock_period", champsim::chrono::picoseconds{3200})
+                            .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                            .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                            .add_parameter("vmem", static_cast<champsim::modules::vmem_module*>(&vmem))};
 
     std::array<champsim::operable*, 3> elements{{&mock_ul, &uut, &mock_ll}};
 
@@ -73,37 +58,19 @@ SCENARIO("Issuing a PTW fills the PSCLs")
   GIVEN("A 5-level virtual memory")
   {
     constexpr std::size_t levels = 5;
-    MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                           champsim::chrono::picoseconds{6400},
-                           std::size_t{18},
-                           std::size_t{18},
-                           std::size_t{18},
-                           std::size_t{38},
-                           champsim::chrono::microseconds{64000},
-                           {},
-                           64,
-                           64,
-                           1,
-                           champsim::data::bytes{8},
-                           1024,
-                           1024,
-                           4,
-                           4,
-                           4,
-                           8192};
-    VirtualMemory vmem{champsim::data::bytes{1 << 12}, levels, champsim::chrono::nanoseconds{640}, dram};
+    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"t600_dram_1", "DEFAULT_MEMORY_CONTROLLER", champsim::defaults::default_memory_controller()}};
+    VirtualMemory vmem{champsim::modules::ModuleBuilder{"t600_vmem_1", "DEFAULT_VMEM", champsim::defaults::default_vmem()}
+        .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))
+        .add_parameter("page_table_levels", levels)
+        .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{640000})};
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    PageTableWalker uut{champsim::ptw_builder{champsim::defaults::default_ptw}
-                            .name("600b-uut")
-                            .clock_period(champsim::chrono::picoseconds{3200})
-                            .upper_levels({&mock_ul.queues})
-                            .lower_level(&mock_ll.queues)
-                            .virtual_memory(&vmem)
-                            .add_pscl(5, 1, 1)
-                            .add_pscl(4, 1, 1)
-                            .add_pscl(3, 1, 1)
-                            .add_pscl(2, 1, 1)};
+    PageTableWalker uut{champsim::modules::ModuleBuilder{"t600_ptw_1", "DEFAULT_PTW", champsim::defaults::default_ptw()}
+                            .add_parameter("clock_period", champsim::chrono::picoseconds{3200})
+                            .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                            .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                            .add_parameter("vmem", static_cast<champsim::modules::vmem_module*>(&vmem))
+                            .add_parameter("pscl_dims", std::vector<std::array<uint32_t, 3>>{{5, 1, 1}, {4, 1, 1}, {3, 1, 1}, {2, 1, 1}})};
 
     std::array<champsim::operable*, 3> elements{{&mock_ul, &uut, &mock_ll}};
 
@@ -140,37 +107,19 @@ SCENARIO("PSCLs can reduce the number of issued translation requests")
   GIVEN("A 5-level virtual memory and one issued packet")
   {
     constexpr std::size_t levels = 5;
-    MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                           champsim::chrono::picoseconds{6400},
-                           std::size_t{18},
-                           std::size_t{18},
-                           std::size_t{18},
-                           std::size_t{38},
-                           champsim::chrono::microseconds{64000},
-                           {},
-                           64,
-                           64,
-                           1,
-                           champsim::data::bytes{8},
-                           1024,
-                           1024,
-                           4,
-                           4,
-                           4,
-                           8192};
-    VirtualMemory vmem{champsim::data::bytes{1 << 12}, levels, champsim::chrono::nanoseconds{640}, dram};
+    MEMORY_CONTROLLER dram{champsim::modules::ModuleBuilder{"t600_dram_2", "DEFAULT_MEMORY_CONTROLLER", champsim::defaults::default_memory_controller()}};
+    VirtualMemory vmem{champsim::modules::ModuleBuilder{"t600_vmem_2", "DEFAULT_VMEM", champsim::defaults::default_vmem()}
+        .add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram))
+        .add_parameter("page_table_levels", levels)
+        .add_parameter("minor_fault_penalty", champsim::chrono::picoseconds{640000})};
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    PageTableWalker uut{champsim::ptw_builder{champsim::defaults::default_ptw}
-                            .name("600c-uut")
-                            .clock_period(champsim::chrono::picoseconds{3200})
-                            .upper_levels({&mock_ul.queues})
-                            .lower_level(&mock_ll.queues)
-                            .virtual_memory(&vmem)
-                            .add_pscl(5, 1, 1)
-                            .add_pscl(4, 1, 1)
-                            .add_pscl(3, 1, 1)
-                            .add_pscl(2, 1, 1)};
+    PageTableWalker uut{champsim::modules::ModuleBuilder{"t600_ptw_2", "DEFAULT_PTW", champsim::defaults::default_ptw()}
+                            .add_parameter("clock_period", champsim::chrono::picoseconds{3200})
+                            .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                            .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                            .add_parameter("vmem", static_cast<champsim::modules::vmem_module*>(&vmem))
+                            .add_parameter("pscl_dims", std::vector<std::array<uint32_t, 3>>{{5, 1, 1}, {4, 1, 1}, {3, 1, 1}, {2, 1, 1}})};
 
     std::array<champsim::operable*, 3> elements{{&mock_ul, &uut, &mock_ll}};
 

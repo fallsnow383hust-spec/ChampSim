@@ -1,40 +1,27 @@
 #include <catch.hpp>
 
-#include "environment.h"
 #include "cache.h"
 #include "channel.h"
 #include "defaults.hpp"
 #include <vector>
 
-TEST_CASE("Module Build Order")
+TEST_CASE("Caches can be built from ModuleBuilder defaults")
 {
-  //given a sequence of cache builders, when we create the environment, the order should be preserved
-  GIVEN("A sequence of cache builders") {
+  GIVEN("A set of ModuleBuilder defaults for different cache types") {
+    CACHE llc{champsim::modules::ModuleBuilder{"cache0", "DEFAULT_CACHE", champsim::defaults::default_llc().add_parameter("mshr_size", static_cast<uint32_t>(8))}};
+    CACHE dtlb{champsim::modules::ModuleBuilder{"cache1", "DEFAULT_CACHE", champsim::defaults::default_dtlb()}};
+    CACHE itlb{champsim::modules::ModuleBuilder{"cache2", "DEFAULT_CACHE", champsim::defaults::default_itlb().add_parameter("mshr_size", static_cast<uint32_t>(8))}};
+    CACHE l1d{champsim::modules::ModuleBuilder{"cache3", "DEFAULT_CACHE", champsim::defaults::default_l1d().add_parameter("mshr_size", static_cast<uint32_t>(8))}};
 
-    auto caches{
-        champsim::configured::build<CACHE>(
-        champsim::cache_builder{ champsim::defaults::default_llc }
-            .name("cache0"),
-        champsim::cache_builder{ champsim::defaults::default_dtlb }
-            .name("cache1"),
-        champsim::cache_builder{ champsim::defaults::default_itlb }
-            .name("cache2"),
-        champsim::cache_builder{ champsim::defaults::default_l1d }
-            .name("cache3")
-        )
-    };
-
+    std::vector<CACHE*> caches{&llc, &dtlb, &itlb, &l1d};
     std::vector<std::string> expected_names{"cache0", "cache1", "cache2", "cache3"};
 
-    //require the names match the order of the builders
-    THEN("The caches are built and returned in the same order as the builders") {
+    THEN("The caches have the correct names") {
+      std::vector<std::string> cache_names{};
+      for (const auto* cache : caches)
+        cache_names.push_back(cache->NAME);
 
-        //grab the names of the built caches
-        std::vector<std::string> cache_names{};
-        for (const auto& cache : caches)
-            cache_names.push_back(cache.NAME);
-
-        REQUIRE_THAT(cache_names, Catch::Matchers::Equals(expected_names));
+      REQUIRE_THAT(cache_names, Catch::Matchers::Equals(expected_names));
     }
-  };
+  }
 }

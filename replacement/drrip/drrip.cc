@@ -7,8 +7,10 @@
 
 #include "champsim.h"
 
-drrip::drrip(CACHE* cache)
-    : replacement(cache), NUM_SET(cache->NUM_SET), NUM_WAY(cache->NUM_WAY), rrpv(static_cast<std::size_t>(NUM_SET * NUM_WAY)),
+champsim::modules::replacement::register_module<drrip> drrip_register("drrip");
+
+drrip::drrip(champsim::modules::ModuleBuilder builder)
+    : NUM_SET(builder.get_parent<champsim::modules::cache_module>()->num_sets()), NUM_WAY(builder.get_parent<champsim::modules::cache_module>()->num_ways()), rrpv(static_cast<std::size_t>(NUM_SET * NUM_WAY)),
       PSEL(NUM_CPUS, champsim::msl::dscounter<long, PSEL_WIDTH>(champsim::msl::get_sample_rate(NUM_SET)))
 {
 }
@@ -30,7 +32,7 @@ void drrip::update_srrip(long set, long way) { get_rrpv(set, way) = maxRRPV - 1;
 
 // called on every cache hit and cache fill
 void drrip::update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                     champsim::address victim_addr, access_type type, uint8_t hit)
+                                     champsim::address victim_addr, access_type type, bool hit)
 {
 
   // cache hit

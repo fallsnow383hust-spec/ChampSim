@@ -20,7 +20,7 @@
 
 #include "stats_printer.h"
 
-void to_json(nlohmann::json& j, const O3_CPU::stats_type& stats)
+void to_json(nlohmann::json& j, const champsim::modules::core_module::stats_type& stats)
 {
   constexpr std::array types{branch_type::BRANCH_DIRECT_JUMP, branch_type::BRANCH_INDIRECT,      branch_type::BRANCH_CONDITIONAL,
                              branch_type::BRANCH_DIRECT_CALL, branch_type::BRANCH_INDIRECT_CALL, branch_type::BRANCH_RETURN};
@@ -39,7 +39,7 @@ void to_json(nlohmann::json& j, const O3_CPU::stats_type& stats)
                      {"mispredict", mpki}};
 }
 
-void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
+void to_json(nlohmann::json& j, const champsim::modules::cache_module::stats_type& stats)
 {
   using hits_value_type = typename decltype(stats.hits)::value_type;
   using misses_value_type = typename decltype(stats.misses)::value_type;
@@ -74,7 +74,7 @@ void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
   j = statsmap;
 }
 
-void to_json(nlohmann::json& j, const DRAM_CHANNEL::stats_type stats)
+void to_json(nlohmann::json& j, const champsim::modules::memory_controller_module::stats_type stats)
 {
   j = nlohmann::json{{"RQ ROW_BUFFER_HIT", stats.RQ_ROW_BUFFER_HIT},
                      {"RQ ROW_BUFFER_MISS", stats.RQ_ROW_BUFFER_MISS},

@@ -40,6 +40,7 @@ public:
   virtual void begin_phase() {}                     // LCOV_EXCL_LINE
   virtual void end_phase(unsigned /*cpu index*/) {} // LCOV_EXCL_LINE
   virtual void print_deadlock() {}                  // LCOV_EXCL_LINE
+  virtual void end_simulation() {}                 // LCOV_EXCL_LINE
 
   [[deprecated]] uint64_t current_cycle() const;
 };

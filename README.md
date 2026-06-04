@@ -26,11 +26,15 @@ vcpkg/vcpkg install
 
 # Compile
 
-ChampSim takes a JSON configuration script. Examine `champsim_config.json` for a fully-specified example. All options described in this file are optional and will be replaced with defaults if not specified. The configuration scrip can also be run without input, in which case an empty file is assumed.
+ChampSim is a single pre-compiled binary. Build it with:
 ```
-$ ./config.sh <configuration file>
 $ make
 ```
+or, for a parallel build:
+```
+$ make -j$(nproc)
+```
+The binary is placed at `bin/champsim`.
 
 # Download DPC-3 trace
 
@@ -40,28 +44,68 @@ Storage for these traces is kindly provided by Daniel Jimenez (Texas A&M Univers
 
 # Run simulation
 
-Execute the binary directly.
+Execute the binary directly. Use `--config` to supply a JSON configuration file:
 ```
-$ bin/champsim --warmup-instructions 200000000 --simulation-instructions 500000000 ~/path/to/traces/600.perlbench_s-210B.champsimtrace.xz
+$ bin/champsim --config my_config.json --warmup-instructions 200000000 --simulation-instructions 500000000 ~/path/to/traces/600.perlbench_s-210B.champsimtrace.xz
 ```
+If `--config` is omitted, ChampSim loads `champsim_config.json` from the current directory by default. You can also pipe a config via stdin with `--config -`.
 
 The number of warmup and simulation instructions given will be the number of instructions retired. Note that the statistics printed at the end of the simulation include only the simulation phase.
 
+ChampSim supports two configuration formats:
+- **Legacy format** (`champsim_config.json`): A shorthand format that auto-generates the full module hierarchy from high-level keys like `"branch_predictor"`, `"L1D"`, `"num_cores"`, etc.
+- **Explicit format** (`champsim_config_explicit.json`): Gives full control over every module in the hierarchy. Set `"environment": "ENVIRONMENT"` and define all modules in a `"children"` array. See the [documentation](https://champsim.github.io/ChampSim/master/Explicit-configuration-format.html) for details.
+
 # Add your own branch predictor, data prefetchers, and replacement policy
-**Copy an empty template**
+
+Modules are C++ classes that inherit from an interface base class in the `champsim::modules` namespace. The four user-facing interfaces are `prefetcher`, `replacement`, `branch_predictor`, and `btb`.
+
+**Create a new module**
 ```
 $ mkdir prefetcher/mypref
-$ cp prefetcher/no_l2c/no.cc prefetcher/mypref/mypref.cc
 ```
 
-**Work on your algorithms with your favorite text editor**
+Create `prefetcher/mypref/mypref.h`:
+```cpp
+#include "modules.h"
+
+struct mypref : champsim::modules::prefetcher {
+    mypref(champsim::modules::ModuleBuilder builder);
+    void prefetcher_initialize() override {}
+    uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip,
+        bool cache_hit, bool useful_prefetch, access_type type, uint32_t metadata_in) override;
+    uint32_t prefetcher_cache_fill(champsim::address, long, long, bool,
+        champsim::address, uint32_t metadata_in) override { return metadata_in; }
+    void prefetcher_cycle_operate() override {}
+    void prefetcher_final_stats() override {}
+    void prefetcher_branch_operate(champsim::address, uint8_t, champsim::address) override {}
+};
 ```
-$ vim prefetcher/mypref/mypref.cc
+
+Create `prefetcher/mypref/mypref.cc`:
+```cpp
+#include "mypref.h"
+#include "cache.h"
+
+// Register the module so the simulator can find it by name
+champsim::modules::prefetcher::register_module<mypref> mypref_register("mypref");
+
+mypref::mypref(champsim::modules::ModuleBuilder builder) {
+    // Read parameters from the JSON config if needed:
+    // int degree = builder.get_parameter<int>("degree", true, 3);
+}
+
+uint32_t mypref::prefetcher_cache_operate(champsim::address addr, champsim::address ip,
+    bool cache_hit, bool useful_prefetch, access_type type, uint32_t metadata_in) {
+    // Your prefetching logic here
+    return metadata_in;
+}
 ```
 
 **Compile and test**
-Add your prefetcher to the configuration file.
-```
+
+Add your prefetcher to a configuration file:
+```json
 {
     "L2C": {
         "prefetcher": "mypref"
@@ -71,10 +115,11 @@ Add your prefetcher to the configuration file.
 Note that the example prefetcher is an L2 prefetcher. You might design a prefetcher for a different level.
 
 ```
-$ ./config.sh <configuration file>
 $ make
-$ bin/champsim --warmup-instructions 200000000 --simulation-instructions 500000000 600.perlbench_s-210B.champsimtrace.xz
+$ bin/champsim --config my_config.json --warmup-instructions 200000000 --simulation-instructions 500000000 600.perlbench_s-210B.champsimtrace.xz
 ```
+
+All interface methods are **pure virtual** and must be overridden (use empty stubs `override {}` where no behavior is needed). See the [module system documentation](https://champsim.github.io/ChampSim/master/Modules.html) for complete interface signatures and details.
 
 # How to create traces
 

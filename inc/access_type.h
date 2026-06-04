@@ -32,4 +32,15 @@ enum class access_type : unsigned {
 using namespace std::literals::string_view_literals;
 inline constexpr std::array<std::string_view, static_cast<std::size_t>(access_type::NUM_TYPES)> access_type_names{"LOAD"sv, "RFO"sv, "PREFETCH"sv, "WRITE"sv,
                                                                                                                   "TRANSLATION"};
+
+inline auto format_as(access_type a) { return access_type_names[static_cast<unsigned>(a)]; }
+
+inline access_type access_type_from_string(std::string_view s) {
+  for (std::size_t i = 0; i < access_type_names.size(); ++i) {
+    if (access_type_names[i] == s)
+      return static_cast<access_type>(i);
+  }
+  return access_type::NUM_TYPES;
+}
+
 #endif

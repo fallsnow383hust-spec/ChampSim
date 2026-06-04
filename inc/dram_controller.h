@@ -33,6 +33,7 @@
 #include "dram_stats.h"
 #include "extent_set.h"
 #include "operable.h"
+#include "packet.h"
 
 struct DRAM_ADDRESS_MAPPING {
   constexpr static std::size_t SLICER_OFFSET_IDX = 0;
@@ -91,7 +92,7 @@ struct DRAM_ADDRESS_MAPPING {
 };
 
 struct DRAM_CHANNEL final : public champsim::operable {
-  using response_type = typename champsim::channel::response_type;
+  using response_type = champsim::response;
 
   const DRAM_ADDRESS_MAPPING address_mapping;
 
@@ -111,7 +112,7 @@ struct DRAM_CHANNEL final : public champsim::operable {
     std::vector<uint64_t> instr_depend_on_me{};
     std::vector<std::deque<response_type>*> to_return{};
 
-    explicit request_type(const typename champsim::channel::request_type& req);
+    explicit request_type(const champsim::request& req);
   };
   using value_type = request_type;
   using queue_type = std::vector<std::optional<value_type>>;
@@ -162,8 +163,8 @@ struct DRAM_CHANNEL final : public champsim::operable {
   // data bus period
   champsim::chrono::picoseconds data_bus_period{};
 
-  DRAM_CHANNEL(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t t_rp, std::size_t t_rcd, std::size_t t_cas,
-               std::size_t t_ras, champsim::chrono::microseconds refresh_period, std::size_t refreshes_per_period, champsim::data::bytes width,
+  DRAM_CHANNEL(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t n_rp, std::size_t n_rcd, std::size_t n_cas,
+               std::size_t n_ras, champsim::chrono::microseconds refresh_period, std::size_t refreshes_per_period, champsim::data::bytes width,
                std::size_t rq_size, std::size_t wq_size, DRAM_ADDRESS_MAPPING addr_mapping);
 
   void check_write_collision();
@@ -186,16 +187,16 @@ struct DRAM_CHANNEL final : public champsim::operable {
   [[nodiscard]] champsim::data::bytes density() const;
 };
 
-class MEMORY_CONTROLLER : public champsim::operable
+class MEMORY_CONTROLLER : public champsim::modules::memory_controller_module
 {
-  using channel_type = champsim::channel;
+  using channel_type = champsim::modules::channel_module;
   using request_type = typename channel_type::request_type;
   using response_type = typename channel_type::response_type;
   std::vector<channel_type*> queues;
   const champsim::data::bytes channel_width;
 
   void initiate_requests();
-  bool add_rq(const request_type& packet, champsim::channel* ul);
+  bool add_rq(const request_type& packet, champsim::modules::channel_module* ul);
   bool add_wq(const request_type& packet);
 
   const DRAM_ADDRESS_MAPPING address_mapping;
@@ -206,16 +207,17 @@ class MEMORY_CONTROLLER : public champsim::operable
 public:
   std::vector<DRAM_CHANNEL> channels;
 
-  MEMORY_CONTROLLER(champsim::chrono::picoseconds dbus_period, champsim::chrono::picoseconds mc_period, std::size_t t_rp, std::size_t t_rcd, std::size_t t_cas,
-                    std::size_t t_ras, champsim::chrono::microseconds refresh_period, std::vector<channel_type*>&& ul, std::size_t rq_size, std::size_t wq_size,
-                    std::size_t chans, champsim::data::bytes chan_width, std::size_t rows, std::size_t columns, std::size_t ranks, std::size_t bankgroups,
-                    std::size_t banks, std::size_t refreshes_per_period);
+  MEMORY_CONTROLLER(champsim::modules::ModuleBuilder builder);
 
   void initialize() final;
   long operate() final;
   void begin_phase() final;
   void end_phase(unsigned cpu) final;
   void print_deadlock() final;
+
+  stats_type get_sim_stats(std::size_t channel_no) const final;
+  stats_type get_roi_stats(std::size_t channel_no) const final;
+  std::size_t get_num_channels() const final { return channels.size(); }
 
   [[nodiscard]] champsim::data::bytes size() const;
 };

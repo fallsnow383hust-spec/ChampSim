@@ -26,18 +26,19 @@
 #include "address.h"
 #include "champsim.h"
 #include "chrono.h"
+#include "modules.h"
 
 class MEMORY_CONTROLLER;
 
 using pte_entry = champsim::data::size<long long, std::ratio<8>>;
 
-class VirtualMemory
+class VirtualMemory: public champsim::modules::vmem_module
 {
 private:
   std::map<std::pair<uint32_t, champsim::page_number>, champsim::page_number> vpage_to_ppage_map;
   std::map<std::tuple<uint32_t, uint32_t, champsim::address_slice<champsim::dynamic_extent>>, champsim::address> page_table;
   std::optional<uint64_t> randomization_seed;
-  MEMORY_CONTROLLER& dram;
+  champsim::modules::memory_controller_module* dram;
 
 public:
   const champsim::chrono::clock::duration minor_fault_penalty;
@@ -70,15 +71,12 @@ public:
    *   This is currently only used to issue a warning if the physical memory is smaller than the virtual memory.
    *   Future versions may perform major page faults through this reference.
    */
-  VirtualMemory(champsim::data::bytes page_table_page_size, std::size_t page_table_levels, champsim::chrono::clock::duration minor_penalty,
-                MEMORY_CONTROLLER& dram_);
-  VirtualMemory(champsim::data::bytes page_table_page_size, std::size_t page_table_levels, champsim::chrono::clock::duration minor_penalty,
-                MEMORY_CONTROLLER& dram_, std::optional<uint64_t> randomization_seed_);
+  VirtualMemory(champsim::modules::ModuleBuilder builder);
 
   /**
    * Find the bit location of the lowest bit for the given page table level.
    */
-  [[nodiscard]] champsim::data::bits shamt(std::size_t level) const;
+  [[nodiscard]] champsim::data::bits shamt(std::size_t level) const override;
 
   /**
    * Find the extent for the given page table level.
@@ -88,13 +86,18 @@ public:
   /**
    * Get the page table page offset of the address for the given level.
    */
-  [[nodiscard]] uint64_t get_offset(champsim::address vaddr, std::size_t level) const;
+  [[nodiscard]] uint64_t get_offset(champsim::address vaddr, std::size_t level) const override;
   [[nodiscard]] uint64_t get_offset(champsim::page_number vaddr, std::size_t level) const;
 
   /**
    * The count of unallocated physical pages.
    */
-  [[nodiscard]] std::size_t available_ppages() const;
+  [[nodiscard]] std::size_t available_ppages() const override;
+
+  /**
+   * The number of page table levels.
+   */
+  [[nodiscard]] std::size_t get_pt_levels() const override;
 
   /**
    * Translate the given address from the virtual space to the physical space.
@@ -105,7 +108,7 @@ public:
    *
    * :returns: A pair of the physical address and the latency to be applied to the translation.
    */
-  std::pair<champsim::page_number, champsim::chrono::clock::duration> va_to_pa(uint32_t cpu_num, champsim::page_number vaddr);
+  std::pair<champsim::page_number, champsim::chrono::clock::duration> va_to_pa(uint32_t cpu_num, champsim::page_number vaddr) override;
 
   /**
    * Find the address for the page table page for the given virtual address (under translation), and the given level.
@@ -117,7 +120,7 @@ public:
    *
    * :returns: A pair of the page table page address and the latency to be applied to the operation.
    */
-  std::pair<champsim::address, champsim::chrono::clock::duration> get_pte_pa(uint32_t cpu_num, champsim::page_number vaddr, std::size_t level);
+  std::pair<champsim::address, champsim::chrono::clock::duration> get_pte_pa(uint32_t cpu_num, champsim::page_number vaddr, std::size_t level) override;
 };
 
 #endif

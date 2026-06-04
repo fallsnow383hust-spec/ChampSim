@@ -1,7 +1,10 @@
 #include <catch.hpp>
 
 #include "../replacement/ship/ship.h"
+#include "cache.h"
 #include "defaults.hpp"
+#include "mocks.hpp"
+#include "modules.h"
 
 TEST_CASE("SHIP sampler matches at cache block granularity")
 {
@@ -21,16 +24,21 @@ TEST_CASE("SHIP sampler matches at cache block granularity")
    *     replacement_cache_fill assigns rrpv = maxRRPV, making the line the
    *     preferred eviction victim in find_victim.
    */
-  CACHE cache{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("445-ship-tag-test")
-                  .sets(8)
-                  .ways(8)
-                  .offset_bits(champsim::data::bits{6}) // BLOCK_SIZE=64 → OFFSET_BITS=6
-                  .replacement<ship>()};
+  do_nothing_MRC mock_ll;
+  to_rq_MRP mock_ul;
+  CACHE cache{champsim::modules::ModuleBuilder{"445-ship-tag-test", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+    .add_parameter("mshr_size", static_cast<uint32_t>(8))
+    .add_parameter("num_sets", static_cast<uint32_t>(8))
+    .add_parameter("num_ways", static_cast<uint32_t>(8))
+    .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+    .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+    .add_parameter("offset_bits", champsim::data::bits{6}) // BLOCK_SIZE=64 → OFFSET_BITS=6
+    .add_submodule("replacement", champsim::modules::ModuleBuilder{"445-ship-tag-testship", "ship"})
+  };
 
-  auto* model = dynamic_cast<CACHE::replacement_module_model<ship>*>(cache.repl_module_pimpl.get());
-  REQUIRE(model != nullptr);
-  auto& uut = std::get<ship>(model->intern_);
+  auto* ship_repl = dynamic_cast<ship*>(champsim::modules::replacement::get_instance<champsim::modules::replacement>("445-ship-tag-testship"));
+  REQUIRE(ship_repl != nullptr);
+  auto& uut = *ship_repl;
 
   champsim::address test_ip{100};
   champsim::address baseline_ip{200};

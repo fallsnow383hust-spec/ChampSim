@@ -8,57 +8,69 @@
 #include "modules.h"
 namespace
 {
-std::map<CACHE*, int> victim_interface_discerner;
-std::map<CACHE*, int> update_interface_discerner;
-std::map<CACHE*, int> fill_override_interface_discerner;
+std::map<champsim::modules::cache_module*, int> victim_interface_discerner;
+std::map<champsim::modules::cache_module*, int> update_interface_discerner;
+std::map<champsim::modules::cache_module*, int> fill_override_interface_discerner;
 
 struct dual_interface : champsim::modules::replacement {
   using replacement::replacement;
 
-  long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, uint64_t, uint64_t, uint32_t)
+    champsim::modules::cache_module* parent_ = nullptr;
+
+    dual_interface(CACHE* c) {(void)c;}
+
+    void initialize_replacement() override {}
+    long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address, access_type) override
+    {
+      ::victim_interface_discerner[parent_] = 1;
+      return 0;
+    }
+
+    void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type, bool) override
+    {
+      ::update_interface_discerner[parent_] = 1;
+    }
+
+    void replacement_cache_fill(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type) override {}
+    void replacement_final_stats() override {}
+
+    dual_interface(champsim::modules::ModuleBuilder builder)
+      : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
+  };
+
+  struct fill_selection : champsim::modules::replacement
   {
-    ::victim_interface_discerner[intern_] = 1;
-    return 0;
-  }
+    using replacement::replacement;
 
-  long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address, uint32_t)
-  {
-    ::victim_interface_discerner[intern_] = 2;
-    return 0;
-  }
+    champsim::modules::cache_module* parent_ = nullptr;
 
-  long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address, access_type)
-  {
-    ::victim_interface_discerner[intern_] = 3;
-    return 0;
-  }
+    fill_selection(CACHE* c) {(void)c;}
 
-  void update_replacement_state(uint32_t, long, long, uint64_t, uint64_t, uint64_t, uint32_t, uint8_t) { ::update_interface_discerner[intern_] = 1; }
+    void initialize_replacement() override {}
+    long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address, access_type) override
+    {
+      return 0;
+    }
 
-  void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, champsim::address, uint32_t, bool)
-  {
-    ::update_interface_discerner[intern_] = 2;
-  }
+    void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type, bool) override
+    {
+      ::update_interface_discerner[parent_] = 1;
+    }
 
-  void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type, bool)
-  {
-    ::update_interface_discerner[intern_] = 3;
-  }
-};
+    void replacement_cache_fill(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type) override
+    {
+      ::fill_override_interface_discerner[parent_] = 1;
+    }
 
-struct fill_selection : champsim::modules::replacement {
-  using replacement::replacement;
+    void replacement_final_stats() override {}
 
-  long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address, access_type) { return 0; }
+    fill_selection(champsim::modules::ModuleBuilder builder)
+      : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
+  };
+}
 
-  void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, access_type, bool) { ::update_interface_discerner[intern_] = 1; }
-
-  void replacement_cache_fill(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type)
-  {
-    ::fill_override_interface_discerner[intern_] = 1;
-  }
-};
-} // namespace
+champsim::modules::replacement::register_module<dual_interface> dual_interface_register("dual_interface");
+champsim::modules::replacement::register_module<fill_selection> fill_selection_register("fill_selection");
 
 SCENARIO("The simulator selects the address-based victim finder in replacement policies")
 {
@@ -67,14 +79,16 @@ SCENARIO("The simulator selects the address-based victim finder in replacement p
   {
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("443a-uut")
-                  .sets(1)
-                  .ways(1)
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .offset_bits(champsim::data::bits{})
-                  .replacement<::dual_interface, lru>()};
+    CACHE uut{champsim::modules::ModuleBuilder{"t443_cache_0", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+      .add_parameter("mshr_size", static_cast<uint32_t>(8))
+      .add_parameter("num_sets", static_cast<uint32_t>(1))
+      .add_parameter("num_ways", static_cast<uint32_t>(1))
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("offset_bits", champsim::data::bits{})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t443_dual_interface_0", "dual_interface"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t443_lru_0", "lru"})
+    };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
 
@@ -123,7 +137,7 @@ SCENARIO("The simulator selects the address-based victim finder in replacement p
             for (auto elem : elements)
               elem->_operate();
 
-          THEN("The replacement policy is called with address interface") { REQUIRE(::victim_interface_discerner[&uut] == 3); }
+          THEN("The replacement policy is called with address interface") { REQUIRE(::victim_interface_discerner[&uut] == 1); }
         }
       }
     }
@@ -142,17 +156,19 @@ SCENARIO("The simulator selects the address-based update function in replacement
     constexpr uint64_t fill_latency = 2;
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l2c}
-                  .name("443b-uut-" + std::string{str})
-                  .sets(1)
-                  .ways(1)
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .prefetch_activate(type)
-                  .offset_bits(champsim::data::bits{})
-                  .replacement<::dual_interface, lru>()};
+    CACHE uut{champsim::modules::ModuleBuilder{"t443_cache_1", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
+      .add_parameter("mshr_size", static_cast<uint32_t>(8))
+      .add_parameter("num_sets", static_cast<uint32_t>(1))
+      .add_parameter("num_ways", static_cast<uint32_t>(1))
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("pref_activate_mask", std::vector<access_type>{type})
+      .add_parameter("offset_bits", champsim::data::bits{})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t443_dual_interface_1", "dual_interface"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t443_lru_1", "lru"})
+    };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
 
@@ -188,7 +204,7 @@ SCENARIO("The simulator selects the address-based update function in replacement
         for (auto elem : elements)
           elem->_operate();
 
-      THEN("The replacement policy is called with the address interface") { REQUIRE(::update_interface_discerner[&uut] == 3); }
+      THEN("The replacement policy is called with the address interface") { REQUIRE(::update_interface_discerner[&uut] == 1); }
     }
   }
 }
@@ -205,17 +221,19 @@ SCENARIO("The simulator selects the cache fill function if it is available")
     constexpr uint64_t fill_latency = 10;
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l2c}
-                  .name("443b-uut-" + std::string{str})
-                  .sets(1)
-                  .ways(1)
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .prefetch_activate(type)
-                  .offset_bits(champsim::data::bits{})
-                  .replacement<::fill_selection, lru>()};
+    CACHE uut{champsim::modules::ModuleBuilder{"t443_cache_2", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
+      .add_parameter("mshr_size", static_cast<uint32_t>(8))
+      .add_parameter("num_sets", static_cast<uint32_t>(1))
+      .add_parameter("num_ways", static_cast<uint32_t>(1))
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("pref_activate_mask", std::vector<access_type>{type})
+      .add_parameter("offset_bits", champsim::data::bits{})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t443_fill_selection", "fill_selection"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t443_lru_2", "lru"})
+    };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
 

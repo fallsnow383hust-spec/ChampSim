@@ -2,7 +2,10 @@
 #include <catch.hpp>
 
 #include "champsim.h"
-const std::size_t NUM_CPUS = 1;
+#include "util/bits.h"
+std::size_t NUM_CPUS = 1;
 
-const unsigned BLOCK_SIZE = 64;
-const unsigned PAGE_SIZE = 4096;
+unsigned BLOCK_SIZE = 64;
+unsigned PAGE_SIZE = 4096;
+unsigned LOG2_BLOCK_SIZE = champsim::lg2(64u);
+unsigned LOG2_PAGE_SIZE = champsim::lg2(4096u);

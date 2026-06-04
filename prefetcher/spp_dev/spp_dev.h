@@ -47,14 +47,17 @@ struct spp_dev : public champsim::modules::prefetcher {
   constexpr static uint32_t GLOBAL_COUNTER_MAX = ((1 << GLOBAL_COUNTER_BIT) - 1);
   constexpr static std::size_t MAX_GHR_ENTRY = 8;
 
-  using prefetcher::prefetcher;
-  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
-                                    uint32_t metadata_in);
-  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in);
+  champsim::modules::cache_module* cache_ = nullptr;
 
-  void prefetcher_initialize();
-  void prefetcher_cycle_operate();
-  void prefetcher_final_stats();
+  using prefetcher::prefetcher;
+  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
+                                    uint32_t metadata_in) override;
+  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr, uint32_t metadata_in) override;
+
+  void prefetcher_initialize() override;
+  void prefetcher_cycle_operate() override;
+  void prefetcher_final_stats() override;
+  void prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) override {}
 
   enum FILTER_REQUEST { SPP_L2C_PREFETCH, SPP_LLC_PREFETCH, L2C_DEMAND, L2C_EVICT }; // Request type for prefetch filter
   static uint64_t get_hash(uint64_t key);
@@ -174,6 +177,9 @@ struct spp_dev : public champsim::modules::prefetcher {
   PATTERN_TABLE PT;
   PREFETCH_FILTER FILTER;
   GLOBAL_REGISTER GHR;
+
+  spp_dev(champsim::modules::ModuleBuilder builder)
+    : cache_(builder.get_parent<champsim::modules::cache_module>()) {}
 };
 
 #endif

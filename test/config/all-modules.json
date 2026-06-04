@@ -1,0 +1,84 @@
+{
+  "_description": "Loads every shipped module at least once for comprehensive valgrind testing.",
+  "num_cores": 4,
+  "block_size": 64,
+  "page_size": 4096,
+  "heartbeat_frequency": 10000000,
+
+  "ooo_cpu": [
+    {
+      "frequency": 4000,
+      "branch_predictor": "bimodal",
+      "btb": "basic_btb",
+      "L1I": {
+        "prefetcher": "no",
+        "replacement": "lru"
+      },
+      "L1D": {
+        "prefetcher": "ip_stride",
+        "replacement": "srrip"
+      },
+      "L2C": {
+        "prefetcher": "spp_dev",
+        "replacement": "drrip"
+      }
+    },
+    {
+      "frequency": 4000,
+      "branch_predictor": "gshare",
+      "btb": "basic_btb",
+      "L1I": {
+        "prefetcher": "no",
+        "replacement": "lru"
+      },
+      "L1D": {
+        "prefetcher": "next_line",
+        "replacement": "ship"
+      },
+      "L2C": {
+        "prefetcher": "no",
+        "replacement": "random"
+      }
+    },
+    {
+      "frequency": 4000,
+      "branch_predictor": "hashed_perceptron",
+      "btb": "basic_btb",
+      "L1I": {
+        "prefetcher": "no",
+        "replacement": "lru"
+      },
+      "L1D": {
+        "prefetcher": "va_ampm_lite",
+        "virtual_prefetch": true,
+        "replacement": "srrip"
+      },
+      "L2C": {
+        "prefetcher": "no",
+        "replacement": "lru"
+      }
+    },
+    {
+      "frequency": 4000,
+      "branch_predictor": "perceptron",
+      "btb": "basic_btb",
+      "L1I": {
+        "prefetcher": "no",
+        "replacement": "lru"
+      },
+      "L1D": {
+        "prefetcher": "no",
+        "replacement": "lru"
+      },
+      "L2C": {
+        "prefetcher": "ip_stride",
+        "replacement": "srrip"
+      }
+    }
+  ],
+
+  "LLC": {
+    "prefetcher": "no",
+    "replacement": "drrip"
+  }
+}

@@ -16,14 +16,14 @@ SCENARIO("The MSHR respects the fill bandwidth")
   {
     release_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("404-uut-m")
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .tag_bandwidth(champsim::bandwidth::maximum_type{10})
-                  .fill_bandwidth(champsim::bandwidth::maximum_type{fill_bandwidth})};
+    CACHE uut{champsim::modules::ModuleBuilder{"t404_cache_0", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                  .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                  .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                  .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                  .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+                  .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{10})
+                  .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{fill_bandwidth})};
 
     std::array<champsim::operable*, 3> elements{{&uut, &mock_ll, &mock_ul}};
 
@@ -89,15 +89,15 @@ SCENARIO("Writebacks respect the fill bandwidth")
   {
     do_nothing_MRC mock_ll{20};
     to_wq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("404-uut-w")
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .tag_bandwidth(champsim::bandwidth::maximum_type{10})
-                  .reset_wq_checks_full_addr()
-                  .fill_bandwidth(champsim::bandwidth::maximum_type{fill_bandwidth})};
+    CACHE uut{champsim::modules::ModuleBuilder{"t404_cache_1", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                  .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                  .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                  .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                  .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+                  .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{10})
+                  .add_parameter("match_offset_bits", false)
+                  .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{fill_bandwidth})};
 
     std::array<champsim::operable*, 3> elements{{&uut, &mock_ll, &mock_ul}};
 

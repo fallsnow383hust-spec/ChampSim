@@ -17,6 +17,8 @@
 #ifndef BANDWIDTH_H
 #define BANDWIDTH_H
 
+#include <fmt/format.h>
+
 namespace champsim
 {
 /**
@@ -83,6 +85,12 @@ public:
    */
   explicit bandwidth(maximum_type maximum);
 };
+
+inline auto format_as(champsim::bandwidth::maximum_type val) {
+  return static_cast<long int>(val);
+}
+
 } // namespace champsim
+
 
 #endif

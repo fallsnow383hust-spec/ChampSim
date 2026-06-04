@@ -1,4 +1,4 @@
-name: Compile-only configurations
+name: Runtime configurations
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
       
       - id: set-matrix
         name: Parse output
-        run: python3 -c 'import os, json; print("matrix="+json.dumps(os.listdir("test/config/compile-only")))' >> $GITHUB_OUTPUT
+        run: python3 -c 'import os, json; print("matrix="+json.dumps(os.listdir("test/config")))' >> $GITHUB_OUTPUT
 
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -55,9 +55,9 @@ jobs:
         vcpkg/bootstrap-vcpkg.sh
         vcpkg/vcpkg install
 
-    - name: Configure
-      run: ./config.sh $(pwd)/test/config/compile-only/${{ matrix.file }}
-
     - name: Make
       run: make
+
+    - name: Validate configuration
+      run: ./bin/champsim --config test/config/${{ matrix.file }} --dump -w0 -i1 -- /dev/null 2>&1 | head -100
 

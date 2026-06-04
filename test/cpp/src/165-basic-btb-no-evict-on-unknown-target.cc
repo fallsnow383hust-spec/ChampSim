@@ -1,4 +1,3 @@
-#define CATCH_CONFIG_ENABLE_PAIR_STRINGMAKER
 #include <algorithm>
 #include <catch.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
@@ -22,7 +21,7 @@ TEST_CASE("The basic_btb does not fill not-taken branches")
 
   // Check that all of the addresses are in the BTB
   std::vector<std::pair<champsim::address, bool>> seed_check_result{};
-  std::transform(std::cbegin(seed_ip), std::cend(seed_ip), std::back_inserter(seed_check_result), [&](auto ip) { return uut.btb_prediction(ip); });
+  std::transform(std::cbegin(seed_ip), std::cend(seed_ip), std::back_inserter(seed_check_result), [&](auto ip) { return uut.btb_prediction(ip, 0); });
   CHECK_THAT(seed_check_result, Catch::Matchers::AllMatch(Catch::Matchers::Predicate<std::pair<champsim::address, bool>>(
                                     [fake_target](const auto& res) { return res.first == fake_target; },
                                     "The predicted target should be " + Catch::to_string(fake_target.to<uint64_t>()))));
@@ -31,10 +30,10 @@ TEST_CASE("The basic_btb does not fill not-taken branches")
   uut.update_btb(test_ip, champsim::address{}, false, BRANCH_CONDITIONAL);
 
   // The first seeded IP is still present
-  auto [seed_predicted_target, seed_always_taken] = uut.btb_prediction(seed_ip.front());
+  auto [seed_predicted_target, seed_always_taken] = uut.btb_prediction(seed_ip.front(), 0);
   CHECK_FALSE(seed_predicted_target == champsim::address{}); // Branch target should be known
 
   // The block is not filled
-  auto [predicted_target, always_taken] = uut.btb_prediction(test_ip);
+  auto [predicted_target, always_taken] = uut.btb_prediction(test_ip, 0);
   CHECK(predicted_target == champsim::address{}); // Branch target should not be known
 }

@@ -14,14 +14,14 @@ SCENARIO("A cache keeps the address for packets that don't need translation")
     to_rq_MRP mock_ul{[](auto x, auto y) {
       return x.v_address == y.v_address;
     }};
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("415-uut")
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .lower_translate(&mock_translator.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(3)
-                  .tag_bandwidth(champsim::bandwidth::maximum_type{10})};
+    CACHE uut{champsim::modules::ModuleBuilder{"t415_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                  .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                  .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                  .add_parameter("lower_translate", static_cast<champsim::modules::channel_module*>(&mock_translator.queues))
+                  .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                  .add_parameter("fill_latency", static_cast<uint64_t>(3))
+                  .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{10})};
 
     std::array<champsim::operable*, 4> elements{{&uut, &mock_ll, &mock_ul, &mock_translator}};
 

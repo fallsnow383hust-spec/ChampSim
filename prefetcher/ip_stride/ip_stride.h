@@ -35,7 +35,11 @@ struct ip_stride : public champsim::modules::prefetcher {
 
   constexpr static std::size_t TRACKER_SETS = 256;
   constexpr static std::size_t TRACKER_WAYS = 4;
-  constexpr static int PREFETCH_DEGREE = 3;
+  constexpr static int DEFAULT_PREFETCH_DEGREE = 3;
+
+  champsim::modules::cache_module* cache_ = nullptr; // declared before prefetch_degree to match constructor init order
+
+  int prefetch_degree = DEFAULT_PREFETCH_DEGREE;
 
   std::optional<lookahead_entry> active_lookahead;
 
@@ -44,10 +48,18 @@ struct ip_stride : public champsim::modules::prefetcher {
 public:
   using champsim::modules::prefetcher::prefetcher;
 
-  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
-                                    uint32_t metadata_in);
-  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in);
-  void prefetcher_cycle_operate();
+  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
+                                       uint32_t metadata_in) override;
+  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr, uint32_t metadata_in) override;
+  void prefetcher_initialize() override {}
+  void prefetcher_cycle_operate() override;
+  void prefetcher_final_stats() override {}
+  void prefetcher_branch_operate(champsim::address /*ip*/, uint8_t /*branch_type*/, champsim::address /*branch_target*/) override {}
+  ip_stride(champsim::modules::ModuleBuilder builder)
+    : cache_(builder.get_parent<champsim::modules::cache_module>()),
+      prefetch_degree(builder.get_parameter<int>("degree", true, DEFAULT_PREFETCH_DEGREE)),
+      table(builder.get_parameter<std::size_t>("tracker_sets", true, TRACKER_SETS),
+            builder.get_parameter<std::size_t>("tracker_ways", true, TRACKER_WAYS)) {}
 };
 
 #endif

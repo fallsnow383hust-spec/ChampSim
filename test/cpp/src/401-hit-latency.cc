@@ -16,12 +16,12 @@ SCENARIO("A cache returns a hit after the specified latency")
     constexpr auto hit_latency = 7;
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("401-uut-" + std::string(str))
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .prefetch_activate(access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION)};
+    CACHE uut{champsim::modules::ModuleBuilder{"t401_cache", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                  .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                  .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                  .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                  .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION})};
 
     std::array<champsim::operable*, 3> elements{{&uut, &mock_ll, &mock_ul}};
 

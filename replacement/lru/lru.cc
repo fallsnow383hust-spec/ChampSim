@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cassert>
 
-lru::lru(CACHE* cache) : lru(cache, cache->NUM_SET, cache->NUM_WAY) {}
+champsim::modules::replacement::register_module<lru> lru_register("lru");
 
-lru::lru(CACHE* cache, long sets, long ways) : replacement(cache), NUM_WAY(ways), last_used_cycles(static_cast<std::size_t>(sets * ways), 0) {}
+lru::lru(champsim::modules::ModuleBuilder builder) : lru(builder.get_parent<champsim::modules::cache_module>(), builder.get_parent<champsim::modules::cache_module>()->num_sets(), builder.get_parent<champsim::modules::cache_module>()->num_ways()) {}
+
+lru::lru(champsim::modules::cache_module* cache, long sets, long ways) : NUM_WAY(ways), last_used_cycles(static_cast<std::size_t>(sets * ways), 0) {}
 
 long lru::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip,
                       champsim::address full_addr, access_type type)
@@ -28,7 +30,7 @@ void lru::replacement_cache_fill(uint32_t triggering_cpu, long set, long way, ch
 }
 
 void lru::update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                   champsim::address victim_addr, access_type type, uint8_t hit)
+                                   champsim::address victim_addr, access_type type, bool hit)
 {
   // Mark the way as being used on the current cycle
   if (hit && access_type{type} != access_type::WRITE) // Skip this for writeback hits

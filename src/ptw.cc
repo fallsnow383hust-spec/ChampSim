@@ -24,24 +24,42 @@
 #include "champsim.h"
 #include "deadlock.h"
 #include "instruction.h"
-#include "ptw_builder.h" // for ptw_builder
 #include "util/bits.h"   // for bitmask, lg2, splice_bits
 #include "util/span.h"
 #include "vmem.h"
 
-PageTableWalker::PageTableWalker(champsim::ptw_builder b)
-    : champsim::operable(b.m_clock_period), upper_levels(b.m_uls), lower_level(b.m_ll), NAME(b.m_name),
-      MSHR_SIZE(b.m_mshr_size.value_or(std::lround(b.m_mshr_factor * std::floor(std::size(upper_levels))))),
-      MAX_READ(b.m_max_tag_check.value_or(champsim::bandwidth::maximum_type{b.scaled_by_ul_size(b.m_bandwidth_factor)})),
-      MAX_FILL(b.m_max_fill.value_or(champsim::bandwidth::maximum_type{b.scaled_by_ul_size(b.m_bandwidth_factor)})),
-      HIT_LATENCY(b.m_clock_period * b.m_latency), vmem(b.m_vmem), CR3_addr(b.m_vmem->get_pte_pa(b.m_cpu, champsim::page_number{}, b.m_vmem->pt_levels).first)
+PageTableWalker::PageTableWalker(champsim::modules::ModuleBuilder builder)
+    : champsim::modules::page_table_walker_module(builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), upper_levels(builder.get_parameter<std::vector<champsim::modules::channel_module*>>("upper_levels")), lower_level(builder.get_parameter<champsim::modules::channel_module*>("lower_level")), NAME(builder.get_name()),
+      MSHR_SIZE(builder.get_parameter<uint32_t>("mshr_size")),
+      MAX_READ(builder.get_parameter<champsim::bandwidth::maximum_type>("max_tag_check")),
+      MAX_FILL(builder.get_parameter<champsim::bandwidth::maximum_type>("max_fill")),
+      HIT_LATENCY(builder.get_parameter<unsigned>("latency") * builder.get_parameter<champsim::chrono::picoseconds>("clock_period")), vmem(builder.get_parameter<champsim::modules::vmem_module*>("vmem")), CR3_addr(vmem->get_pte_pa(builder.get_parameter<uint32_t>("cpu"), champsim::page_number{}, vmem->get_pt_levels()).first)
 {
-  std::vector<decltype(b.m_pscl)::value_type> local_pscl_dims{};
-  std::remove_copy_if(std::begin(b.m_pscl), std::end(b.m_pscl), std::back_inserter(local_pscl_dims), [](auto x) { return std::get<0>(x) == 0; });
+  auto local_pscl_dims = builder.get_parameter<std::vector<std::array<uint32_t, 3>>>("pscl_dims");
+  auto pt_levels = vmem->get_pt_levels();
+  // Valid PSCL levels are [2, pt_levels]. Level 1 is never cached (handle_fill
+  // at level 1 produces the final va_to_pa lookup, not another intermediate
+  // step). Levels > pt_levels don't exist in this table.
+  local_pscl_dims.erase(std::remove_if(std::begin(local_pscl_dims), std::end(local_pscl_dims),
+                                        [pt_levels](auto x) { return std::get<0>(x) > pt_levels || std::get<0>(x) < 2; }),
+                         std::end(local_pscl_dims));
+
+  // Ensure every level in [2, pt_levels] has a PSCL entry. Missing levels get
+  // a 0-way stub that always misses and silently ignores fills, preserving the
+  // invariant std::size(pscl) == pt_levels - 1 so the walk always starts at
+  // the correct level and no walk steps are silently skipped.
+  for (std::size_t level = 2; level <= pt_levels; ++level) {
+    bool configured = std::any_of(std::begin(local_pscl_dims), std::end(local_pscl_dims),
+                                  [level](const auto& x) { return std::get<0>(x) == level; });
+    if (!configured) {
+      local_pscl_dims.push_back({static_cast<uint32_t>(level), 1, 0});
+    }
+  }
+
   std::sort(std::begin(local_pscl_dims), std::end(local_pscl_dims), std::greater{});
 
   for (auto [level, sets, ways] : local_pscl_dims) {
-    pscl.emplace_back(sets, ways, pscl_indexer{b.m_vmem->shamt(level)}, pscl_indexer{b.m_vmem->shamt(level)});
+    pscl.emplace_back(sets, ways, pscl_indexer{vmem->shamt(level)}, pscl_indexer{vmem->shamt(level)});
   }
 }
 
@@ -69,7 +87,7 @@ auto PageTableWalker::handle_read(const request_type& handle_pkt, channel_type* 
   fwd_mshr.address = champsim::address{champsim::splice(champsim::page_number{walk_init.ptw_addr}, champsim::page_offset{walk_offset})};
   fwd_mshr.v_address = handle_pkt.address;
   if (handle_pkt.response_requested) {
-    fwd_mshr.to_return = {&ul->returned};
+    fwd_mshr.to_return = {&ul->get_returned()};
   }
 
   if constexpr (champsim::debug_print) {
@@ -126,9 +144,9 @@ long PageTableWalker::operate()
   auto is_ready = [time = current_time](const auto& pkt) {
     return pkt.data.is_ready_at(time);
   };
-  std::for_each(std::cbegin(lower_level->returned), std::cend(lower_level->returned), [this](const auto& pkt) { this->finish_packet(pkt); });
-  progress += std::distance(std::cbegin(lower_level->returned), std::cend(lower_level->returned));
-  lower_level->returned.clear();
+  std::for_each(std::cbegin(lower_level->get_returned()), std::cend(lower_level->get_returned()), [this](const auto& pkt) { this->finish_packet(pkt); });
+  progress += std::distance(std::cbegin(lower_level->get_returned()), std::cend(lower_level->get_returned()));
+  lower_level->get_returned().clear();
 
   std::vector<mshr_type> next_steps{};
 
@@ -155,7 +173,7 @@ long PageTableWalker::operate()
 
   champsim::bandwidth tag_bw{MAX_READ};
   for (auto* ul : upper_levels) {
-    auto [rq_begin, rq_end] = champsim::get_span_p(std::cbegin(ul->RQ), std::cend(ul->RQ), tag_bw, [&next_steps, ul, this](const auto& pkt) {
+    auto [rq_begin, rq_end] = champsim::get_span_p(std::cbegin(ul->get_rq()), std::cend(ul->get_rq()), tag_bw, [&next_steps, ul, this](const auto& pkt) {
       auto result = this->handle_read(pkt, ul);
       if (result.has_value()) {
         next_steps.emplace_back(*result);
@@ -163,7 +181,7 @@ long PageTableWalker::operate()
       return result.has_value();
     });
     tag_bw.consume(std::distance(rq_begin, rq_end));
-    ul->RQ.erase(rq_begin, rq_end);
+    ul->get_rq().erase(rq_begin, rq_end);
   }
 
   MSHR.insert(std::cend(MSHR), std::begin(next_steps), std::end(next_steps));
@@ -227,8 +245,8 @@ void PageTableWalker::begin_phase()
   for (auto* ul : upper_levels) {
     channel_type::stats_type ul_new_roi_stats;
     channel_type::stats_type ul_new_sim_stats;
-    ul->roi_stats = ul_new_roi_stats;
-    ul->sim_stats = ul_new_sim_stats;
+    ul->get_roi_stats() = ul_new_roi_stats;
+    ul->get_sim_stats() = ul_new_sim_stats;
   }
 }
 
@@ -240,3 +258,5 @@ void PageTableWalker::print_deadlock()
   });
 }
 // LCOV_EXCL_STOP
+
+champsim::modules::page_table_walker_module::register_module<PageTableWalker> ptw_module("DEFAULT_PTW");

@@ -13,14 +13,14 @@ SCENARIO("A cache evicts a block when required")
     do_nothing_MRC mock_ll;
     to_wq_MRP mock_ul_seed;
     to_rq_MRP mock_ul_test;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l2c}
-                  .name("405-uut")
-                  .sets(1)
-                  .ways(1)
-                  .upper_levels({{&mock_ul_seed.queues, &mock_ul_test.queues}})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(miss_latency)};
+    CACHE uut{champsim::modules::ModuleBuilder{"t405_cache", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                  .add_parameter("num_sets", static_cast<uint32_t>(1))
+                  .add_parameter("num_ways", static_cast<uint32_t>(1))
+                  .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul_seed.queues, &mock_ul_test.queues})
+                  .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                  .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                  .add_parameter("fill_latency", static_cast<uint64_t>(miss_latency))};
 
     std::array<champsim::operable*, 4> elements{{&uut, &mock_ll, &mock_ul_seed, &mock_ul_test}};
 

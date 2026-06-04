@@ -10,32 +10,46 @@
 
 namespace
 {
-std::map<CACHE*, std::vector<test::repl_update_interface>> replacement_update_state_collector;
-std::map<CACHE*, std::vector<test::repl_fill_interface>> replacement_cache_fill_collector;
+std::map<champsim::modules::cache_module*, std::vector<test::repl_update_interface>> replacement_update_state_collector;
+std::map<champsim::modules::cache_module*, std::vector<test::repl_fill_interface>> replacement_cache_fill_collector;
 } // namespace
 
 struct update_state_collector : champsim::modules::replacement {
   using replacement::replacement;
 
-  long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address, uint32_t) { return 0; }
+  champsim::modules::cache_module* parent_ = nullptr;
+
+  update_state_collector(CACHE* c) {(void)c;}
+
+  void initialize_replacement() override {}
+  long find_victim(uint32_t, uint64_t, long, const champsim::cache_block*, champsim::address, champsim::address, access_type) override
+  {
+    return 0;
+  }
 
   void update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip, champsim::address victim_addr,
-                                access_type type, bool hit)
+                                access_type type, bool hit) override
   {
-    auto usc_it = ::replacement_update_state_collector.try_emplace(intern_);
+    auto usc_it = ::replacement_update_state_collector.try_emplace(parent_);
     usc_it.first->second.push_back({triggering_cpu, set, way, full_addr, ip, victim_addr, type, hit});
   }
 
   void replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip, champsim::address victim_addr,
-                              access_type type)
+                              access_type type) override
   {
-    auto cfc_it = ::replacement_cache_fill_collector.try_emplace(intern_);
+    auto cfc_it = ::replacement_cache_fill_collector.try_emplace(parent_);
     cfc_it.first->second.push_back({triggering_cpu, set, way, full_addr, ip, victim_addr, type});
   }
+
+  void replacement_final_stats() override {}
+
+  update_state_collector(champsim::modules::ModuleBuilder builder)
+    : parent_(builder.get_parent<champsim::modules::cache_module>()) {}
 };
 
-SCENARIO("The replacement policy is triggered on a miss, not on a fill")
-{
+champsim::modules::replacement::register_module<update_state_collector> update_state_collect_register("update_state_collector");
+
+SCENARIO("The replacement policy is triggered on a miss, not on a fill") {
   using namespace std::literals;
   auto [type, str] = GENERATE(table<access_type, std::string_view>({std::pair{access_type::LOAD, "load"sv}, std::pair{access_type::RFO, "RFO"sv},
                                                                     std::pair{access_type::PREFETCH, "prefetch"sv}, std::pair{access_type::WRITE, "write"sv},
@@ -46,17 +60,19 @@ SCENARIO("The replacement policy is triggered on a miss, not on a fill")
     constexpr uint64_t fill_latency = 2;
     release_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("442a-uut-" + std::string{str})
-                  .sets(1)
-                  .ways(1)
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .prefetch_activate(type)
-                  .offset_bits(champsim::data::bits{})
-                  .replacement<update_state_collector, lru>()};
+    CACHE uut{champsim::modules::ModuleBuilder{"t442_cache_0", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+      .add_parameter("mshr_size", static_cast<uint32_t>(8))
+      .add_parameter("num_sets", static_cast<uint32_t>(1))
+      .add_parameter("num_ways", static_cast<uint32_t>(1))
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("pref_activate_mask", std::vector<access_type>{type})
+      .add_parameter("offset_bits", champsim::data::bits{})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t442_update_state_collector_0", "update_state_collector"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t442_lru_0", "lru"})
+    };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
 
@@ -123,17 +139,19 @@ SCENARIO("The replacement policy is triggered on a hit")
     constexpr uint64_t fill_latency = 2;
     do_nothing_MRC mock_ll;
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l2c}
-                  .name("442b-uut-" + std::string{str})
-                  .sets(1)
-                  .ways(1)
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .prefetch_activate(type)
-                  .offset_bits(champsim::data::bits{})
-                  .replacement<update_state_collector, lru>()};
+    CACHE uut{champsim::modules::ModuleBuilder{"t442_cache_1", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
+      .add_parameter("mshr_size", static_cast<uint32_t>(8))
+      .add_parameter("num_sets", static_cast<uint32_t>(1))
+      .add_parameter("num_ways", static_cast<uint32_t>(1))
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("pref_activate_mask", std::vector<access_type>{type})
+      .add_parameter("offset_bits", champsim::data::bits{})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t442_update_state_collector_1", "update_state_collector"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t442_lru_1", "lru"})
+    };
 
     std::array<champsim::operable*, 3> elements{{&mock_ll, &mock_ul, &uut}};
 
@@ -193,17 +211,19 @@ SCENARIO("The replacement policy notes the correct eviction information")
     do_nothing_MRC mock_ll;
     to_wq_MRP mock_ul_seed;
     to_rq_MRP mock_ul_test;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l2c}
-                  .name("442c-uut")
-                  .sets(1)
-                  .ways(1)
-                  .upper_levels({&mock_ul_seed.queues, &mock_ul_test.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .prefetch_activate(access_type::LOAD)
-                  .offset_bits(champsim::data::bits{})
-                  .replacement<update_state_collector, lru>()};
+    CACHE uut{champsim::modules::ModuleBuilder{"t442_cache_2", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
+      .add_parameter("mshr_size", static_cast<uint32_t>(8))
+      .add_parameter("num_sets", static_cast<uint32_t>(1))
+      .add_parameter("num_ways", static_cast<uint32_t>(1))
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul_seed.queues, &mock_ul_test.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD})
+      .add_parameter("offset_bits", champsim::data::bits{})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t442_update_state_collector_2", "update_state_collector"})
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t442_lru_2", "lru"})
+    };
 
     std::array<champsim::operable*, 4> elements{{&mock_ll, &mock_ul_seed, &mock_ul_test, &uut}};
 

@@ -1,236 +1,52 @@
-#include <array>
 #include <catch.hpp>
 
 #include "channel.h"
 #include "dram_controller.h"
 #include "ptw.h"
 #include "vmem.h"
+#include "defaults.hpp"
 
-TEST_CASE("The MSHR factor uses the number of upper levels to determine the PTW's default number of MSHRs")
+namespace
 {
-  MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                         champsim::chrono::picoseconds{6400},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{38},
-                         champsim::chrono::microseconds{64000},
-                         {},
-                         64,
-                         64,
-                         1,
-                         champsim::data::bytes{8},
-                         1024,
-                         1024,
-                         4,
-                         4,
-                         4,
-                         8192};
-  VirtualMemory vmem{champsim::data::bytes{1 << 12}, 4, std::chrono::nanoseconds{6400}, dram};
-
-  auto num_uls = GENERATE(1u, 2u, 4u, 6u);
-  auto mshr_factor = 2u;
-  champsim::ptw_builder buildA{};
-  std::vector<champsim::channel> channels{num_uls};
-  std::vector<champsim::channel*> channel_pointers{};
-  for (auto& elem : channels)
-    channel_pointers.push_back(&elem);
-  buildA.upper_levels(std::move(channel_pointers));
-  buildA.mshr_factor((double)mshr_factor);
-
-  PageTableWalker uut{buildA.virtual_memory(&vmem)};
-
-  REQUIRE(uut.MSHR_SIZE == mshr_factor * num_uls);
+auto make_dram()
+{
+  return champsim::modules::ModuleBuilder{"test_dram", "DEFAULT_MEMORY_CONTROLLER", champsim::defaults::default_memory_controller()};
 }
 
-TEST_CASE("The MSHR factor can control the PTW's default number of MSHRs")
+auto make_vmem(MEMORY_CONTROLLER& dram)
 {
-  MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                         champsim::chrono::picoseconds{6400},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{38},
-                         champsim::chrono::microseconds{64000},
-                         {},
-                         64,
-                         64,
-                         1,
-                         champsim::data::bytes{8},
-                         1024,
-                         1024,
-                         4,
-                         4,
-                         4,
-                         8192};
-  VirtualMemory vmem{champsim::data::bytes{1 << 12}, 4, std::chrono::nanoseconds{6400}, dram};
+  auto builder = champsim::modules::ModuleBuilder{"test_vmem", "DEFAULT_VMEM", champsim::defaults::default_vmem()};
+  builder.add_parameter("dram", static_cast<champsim::modules::memory_controller_module*>(&dram));
+  return builder;
+}
+} // namespace
 
-  auto num_uls = 2u;
-  auto mshr_factor = GENERATE(1u, 2u, 4u, 6u);
-  champsim::ptw_builder buildA{};
-  std::vector<champsim::channel> channels{num_uls};
-  std::vector<champsim::channel*> channel_pointers{};
-  for (auto& elem : channels)
-    channel_pointers.push_back(&elem);
-  buildA.upper_levels(std::move(channel_pointers));
-  buildA.mshr_factor((double)mshr_factor);
+TEST_CASE("The PTW's MSHR size can be specified")
+{
+  MEMORY_CONTROLLER dram{make_dram()};
+  VirtualMemory vmem{make_vmem(dram)};
 
-  PageTableWalker uut{buildA.virtual_memory(&vmem)};
+  auto num_mshrs = GENERATE(4u, 8u, 16u);
+  champsim::modules::ModuleBuilder ptw_builder{"test_ptw_92_0", "DEFAULT_PTW", champsim::defaults::default_ptw()};
+  ptw_builder.add_parameter("mshr_size", static_cast<uint32_t>(num_mshrs));
+  ptw_builder.add_parameter("vmem", static_cast<champsim::modules::vmem_module*>(&vmem));
 
-  REQUIRE(uut.MSHR_SIZE == mshr_factor * num_uls);
+  PageTableWalker uut{ptw_builder};
+
+  REQUIRE(uut.MSHR_SIZE == num_mshrs);
 }
 
-TEST_CASE("Specifying the PTW's MSHR size overrides the MSHR factor")
+TEST_CASE("The PTW's tag and fill bandwidth can be specified")
 {
-  MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                         champsim::chrono::picoseconds{6400},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{38},
-                         champsim::chrono::microseconds{64000},
-                         {},
-                         64,
-                         64,
-                         1,
-                         champsim::data::bytes{8},
-                         1024,
-                         1024,
-                         4,
-                         4,
-                         4,
-                         8192};
-  VirtualMemory vmem{champsim::data::bytes{1 << 12}, 4, std::chrono::nanoseconds{6400}, dram};
+  MEMORY_CONTROLLER dram{make_dram()};
+  VirtualMemory vmem{make_vmem(dram)};
 
-  auto num_uls = 2u;
-  auto mshr_factor = 2u;
-  champsim::ptw_builder buildA{};
-  std::vector<champsim::channel> channels{num_uls};
-  std::vector<champsim::channel*> channel_pointers{};
-  for (auto& elem : channels)
-    channel_pointers.push_back(&elem);
-  buildA.upper_levels(std::move(channel_pointers));
-  buildA.mshr_factor((double)mshr_factor);
+  champsim::modules::ModuleBuilder ptw_builder{"test_ptw_92_1", "DEFAULT_PTW", champsim::defaults::default_ptw()};
+  ptw_builder.add_parameter("max_tag_check", champsim::bandwidth::maximum_type{6});
+  ptw_builder.add_parameter("max_fill", champsim::bandwidth::maximum_type{7});
+  ptw_builder.add_parameter("vmem", static_cast<champsim::modules::vmem_module*>(&vmem));
 
-  buildA.mshr_size(6);
-
-  PageTableWalker uut{buildA.virtual_memory(&vmem)};
-
-  REQUIRE(uut.MSHR_SIZE == 6);
-}
-
-TEST_CASE("The bandwidth factor uses the number of upper levels to determine the PTW's default tag and fill bandwidth")
-{
-  MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                         champsim::chrono::picoseconds{6400},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{38},
-                         champsim::chrono::microseconds{64000},
-                         {},
-                         64,
-                         64,
-                         1,
-                         champsim::data::bytes{8},
-                         1024,
-                         1024,
-                         4,
-                         4,
-                         4,
-                         8192};
-  VirtualMemory vmem{champsim::data::bytes{1 << 12}, 4, std::chrono::nanoseconds{6400}, dram};
-
-  auto num_uls = GENERATE(1u, 2u, 4u, 6u);
-  auto bandwidth_factor = 2u;
-  champsim::ptw_builder buildA{};
-  std::vector<champsim::channel> channels{num_uls};
-  std::vector<champsim::channel*> channel_pointers{};
-  for (auto& elem : channels)
-    channel_pointers.push_back(&elem);
-  buildA.upper_levels(std::move(channel_pointers));
-  buildA.bandwidth_factor((double)bandwidth_factor);
-
-  PageTableWalker uut{buildA.virtual_memory(&vmem)};
-
-  CHECK(uut.MAX_READ == champsim::bandwidth::maximum_type{bandwidth_factor * num_uls});
-  CHECK(uut.MAX_FILL == champsim::bandwidth::maximum_type{bandwidth_factor * num_uls});
-}
-
-TEST_CASE("The bandwidth factor can control the PTW's default tag bandwidth")
-{
-  MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                         champsim::chrono::picoseconds{6400},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{38},
-                         champsim::chrono::microseconds{64000},
-                         {},
-                         64,
-                         64,
-                         1,
-                         champsim::data::bytes{8},
-                         1024,
-                         1024,
-                         4,
-                         4,
-                         4,
-                         8192};
-  VirtualMemory vmem{champsim::data::bytes{1 << 12}, 4, std::chrono::nanoseconds{6400}, dram};
-
-  auto num_uls = 2u;
-  auto bandwidth_factor = GENERATE(1u, 2u, 4u, 6u);
-  champsim::ptw_builder buildA{};
-  std::vector<champsim::channel> channels{num_uls};
-  std::vector<champsim::channel*> channel_pointers{};
-  for (auto& elem : channels)
-    channel_pointers.push_back(&elem);
-  buildA.upper_levels(std::move(channel_pointers));
-  buildA.bandwidth_factor((double)bandwidth_factor);
-
-  PageTableWalker uut{buildA.virtual_memory(&vmem)};
-
-  CHECK(uut.MAX_READ == champsim::bandwidth::maximum_type{bandwidth_factor * num_uls});
-  CHECK(uut.MAX_FILL == champsim::bandwidth::maximum_type{bandwidth_factor * num_uls});
-}
-
-TEST_CASE("Specifying the tag bandwidth overrides the PTW's bandwidth factor")
-{
-  MEMORY_CONTROLLER dram{champsim::chrono::picoseconds{3200},
-                         champsim::chrono::picoseconds{6400},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{18},
-                         std::size_t{38},
-                         champsim::chrono::microseconds{64000},
-                         {},
-                         64,
-                         64,
-                         1,
-                         champsim::data::bytes{8},
-                         1024,
-                         1024,
-                         4,
-                         4,
-                         4,
-                         8192};
-  VirtualMemory vmem{champsim::data::bytes{1 << 12}, 4, std::chrono::nanoseconds{6400}, dram};
-
-  auto num_uls = 2u;
-  auto bandwidth_factor = 2u;
-  champsim::ptw_builder buildA{};
-  std::vector<champsim::channel> channels{num_uls};
-  std::vector<champsim::channel*> channel_pointers{};
-  for (auto& elem : channels)
-    channel_pointers.push_back(&elem);
-  buildA.upper_levels(std::move(channel_pointers));
-  buildA.bandwidth_factor((double)bandwidth_factor);
-
-  buildA.tag_bandwidth(champsim::bandwidth::maximum_type{6});
-  buildA.fill_bandwidth(champsim::bandwidth::maximum_type{7});
-
-  PageTableWalker uut{buildA.virtual_memory(&vmem)};
+  PageTableWalker uut{ptw_builder};
 
   CHECK(uut.MAX_READ == champsim::bandwidth::maximum_type{6});
   CHECK(uut.MAX_FILL == champsim::bandwidth::maximum_type{7});

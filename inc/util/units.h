@@ -308,7 +308,7 @@ struct fmt::formatter<champsim::data::size<Rep, Unit>> {
   {
     const static std::map<unsigned long long, std::string_view> suffix_map{
         {champsim::data::size<long long, std::ratio<1>>::byte_multiple, std::string_view{"B"}},
-        {champsim::data::size<long long, champsim::kibi>::byte_multiple, std::string_view{"kiB"}},
+        {champsim::data::size<long long, champsim::kibi>::byte_multiple, std::string_view{"KiB"}},
         {champsim::data::size<long long, champsim::mebi>::byte_multiple, std::string_view{"MiB"}},
         {champsim::data::size<long long, champsim::gibi>::byte_multiple, std::string_view{"GiB"}},
         {champsim::data::size<long long, champsim::tebi>::byte_multiple, std::string_view{"TiB"}}};

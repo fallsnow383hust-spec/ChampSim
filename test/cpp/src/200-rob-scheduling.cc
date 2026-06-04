@@ -3,6 +3,7 @@
 #include "instr.h"
 #include "mocks.hpp"
 #include "ooo_cpu.h"
+#include "defaults.hpp"
 
 SCENARIO("The scheduler can detect RAW hazards")
 {
@@ -12,12 +13,12 @@ SCENARIO("The scheduler can detect RAW hazards")
     constexpr unsigned schedule_latency = 1;
 
     do_nothing_MRC mock_L1I, mock_L1D;
-    O3_CPU uut{champsim::core_builder{}
-                   .schedule_width(champsim::bandwidth::maximum_type{schedule_width})
-                   .register_file_size(128)
-                   .schedule_latency(schedule_latency)
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t200_core_0", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("schedule_width", champsim::bandwidth::maximum_type{schedule_width})
+                   .add_parameter("register_file_size", static_cast<uint32_t>(128))
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     uut.ROB.push_back(champsim::test::instruction_with_ip(1));
     for (auto& instr : uut.ROB)
@@ -46,12 +47,12 @@ SCENARIO("The scheduler can detect RAW hazards")
     constexpr unsigned schedule_latency = 1;
 
     do_nothing_MRC mock_L1I, mock_L1D;
-    O3_CPU uut{champsim::core_builder{}
-                   .schedule_width(champsim::bandwidth::maximum_type{schedule_width})
-                   .register_file_size(128)
-                   .schedule_latency(schedule_latency)
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t200_core_1", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("schedule_width", champsim::bandwidth::maximum_type{schedule_width})
+                   .add_parameter("register_file_size", static_cast<uint32_t>(128))
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     std::vector test_instructions(2, champsim::test::instruction_with_registers(42));
 
@@ -87,12 +88,12 @@ SCENARIO("The scheduler can detect RAW hazards")
     constexpr unsigned schedule_latency = 1;
 
     do_nothing_MRC mock_L1I, mock_L1D;
-    O3_CPU uut{champsim::core_builder{}
-                   .schedule_width(champsim::bandwidth::maximum_type{schedule_width})
-                   .register_file_size(128)
-                   .schedule_latency(schedule_latency)
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t200_core_2", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("schedule_width", champsim::bandwidth::maximum_type{schedule_width})
+                   .add_parameter("register_file_size", static_cast<uint32_t>(128))
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     std::vector test_instructions(schedule_width + 1, champsim::test::instruction_with_registers(42));
 
@@ -151,15 +152,15 @@ SCENARIO("The scheduler handles WAW hazards")
     constexpr unsigned execute_latency = 3;
 
     do_nothing_MRC mock_L1I, mock_L1D;
-    O3_CPU uut{champsim::core_builder{}
-                   .schedule_width(champsim::bandwidth::maximum_type{schedule_width})
-                   .register_file_size(128)
-                   .schedule_latency(schedule_latency)
-                   .execute_latency(execute_latency)
-                   .execute_width(champsim::bandwidth::maximum_type{execute_width})
-                   .retire_width(champsim::bandwidth::maximum_type{execute_width})
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t200_core_3", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("schedule_width", champsim::bandwidth::maximum_type{schedule_width})
+                   .add_parameter("register_file_size", static_cast<uint32_t>(128))
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("execute_latency", static_cast<unsigned>(execute_latency))
+                   .add_parameter("execute_width", champsim::bandwidth::maximum_type{execute_width})
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{execute_width})
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     uut.ROB.push_back(champsim::test::instruction_with_ip(1));
     uut.ROB.at(0).instr_id = 1;
@@ -227,15 +228,15 @@ SCENARIO("The scheduler handles WAW hazards")
     constexpr unsigned execute_latency = 3;
 
     do_nothing_MRC mock_L1I, mock_L1D;
-    O3_CPU uut{champsim::core_builder{}
-                   .schedule_width(champsim::bandwidth::maximum_type{schedule_width})
-                   .schedule_latency(schedule_latency)
-                   .execute_latency(execute_latency)
-                   .register_file_size(128)
-                   .execute_width(champsim::bandwidth::maximum_type{execute_width})
-                   .retire_width(champsim::bandwidth::maximum_type{execute_width})
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t200_core_4", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("schedule_width", champsim::bandwidth::maximum_type{schedule_width})
+                   .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+                   .add_parameter("execute_latency", static_cast<unsigned>(execute_latency))
+                   .add_parameter("register_file_size", static_cast<uint32_t>(128))
+                   .add_parameter("execute_width", champsim::bandwidth::maximum_type{execute_width})
+                   .add_parameter("retire_width", champsim::bandwidth::maximum_type{execute_width})
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     uut.ROB.push_back(champsim::test::instruction_with_ip(1));
     uut.ROB.at(0).instr_id = 1;
@@ -299,15 +300,15 @@ TEST_CASE("ooo_cpu Benchmarks") {
     constexpr unsigned execute_latency = 3;
 
     do_nothing_MRC mock_L1I, mock_L1D;
-    O3_CPU uut{champsim::core_builder{}
-      .schedule_width(champsim::bandwidth::maximum_type{schedule_width})
-      .schedule_latency(schedule_latency)
-      .execute_latency(execute_latency)
-      .register_file_size(128)
-      .execute_width(champsim::bandwidth::maximum_type{execute_width})
-      .retire_width(champsim::bandwidth::maximum_type{execute_width})
-      .fetch_queues(&mock_L1I.queues)
-      .data_queues(&mock_L1D.queues)
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t200_core_5", "DEFAULT_CORE", champsim::defaults::default_core()}
+      .add_parameter("schedule_width", champsim::bandwidth::maximum_type{schedule_width})
+      .add_parameter("schedule_latency", static_cast<unsigned>(schedule_latency))
+      .add_parameter("execute_latency", static_cast<unsigned>(execute_latency))
+      .add_parameter("register_file_size", static_cast<uint32_t>(128))
+      .add_parameter("execute_width", champsim::bandwidth::maximum_type{execute_width})
+      .add_parameter("retire_width", champsim::bandwidth::maximum_type{execute_width})
+      .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+      .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))
     };
 
       uut.ROB.push_back(champsim::test::instruction_with_ip(1));

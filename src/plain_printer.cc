@@ -38,7 +38,7 @@ auto print_ratio(N num, D denom)
 }
 } // namespace
 
-std::vector<std::string> champsim::plain_printer::format(O3_CPU::stats_type stats)
+std::vector<std::string> champsim::plain_printer::format(champsim::modules::core_module::stats_type stats)
 {
   constexpr std::array types{branch_type::BRANCH_DIRECT_JUMP, branch_type::BRANCH_INDIRECT,      branch_type::BRANCH_CONDITIONAL,
                              branch_type::BRANCH_DIRECT_CALL, branch_type::BRANCH_INDIRECT_CALL, branch_type::BRANCH_RETURN};
@@ -65,7 +65,7 @@ std::vector<std::string> champsim::plain_printer::format(O3_CPU::stats_type stat
   return lines;
 }
 
-std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats)
+std::vector<std::string> champsim::plain_printer::format(champsim::modules::cache_module::stats_type stats)
 {
   using hits_value_type = typename decltype(stats.hits)::value_type;
   using misses_value_type = typename decltype(stats.misses)::value_type;
@@ -127,7 +127,7 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
   return lines;
 }
 
-std::vector<std::string> champsim::plain_printer::format(DRAM_CHANNEL::stats_type stats)
+std::vector<std::string> champsim::plain_printer::format(champsim::modules::memory_controller_module::stats_type stats)
 {
   std::vector<std::string> lines{};
   lines.push_back(fmt::format("{} RQ ROW_BUFFER_HIT: {:10}", stats.name, stats.RQ_ROW_BUFFER_HIT));

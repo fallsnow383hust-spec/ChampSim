@@ -1,4 +1,3 @@
-#define CATCH_CONFIG_ENABLE_PAIR_STRINGMAKER
 #include <catch.hpp>
 #include <vector>
 

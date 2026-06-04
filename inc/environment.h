@@ -17,39 +17,54 @@
 #ifndef ENVIRONMENT_H
 #define ENVIRONMENT_H
 
-#include <functional>
+#include <any>
+#include <map>
+#include <string>
 #include <vector>
 
-#include "cache.h"
-#include "dram_controller.h"
-#include "ooo_cpu.h"
-#include "operable.h"
-#include "ptw.h"
+#include "modules.h"
 
-namespace champsim
-{
-struct environment {
-  virtual std::vector<std::reference_wrapper<O3_CPU>> cpu_view() = 0;
-  virtual std::vector<std::reference_wrapper<CACHE>> cache_view() = 0;
-  virtual std::vector<std::reference_wrapper<PageTableWalker>> ptw_view() = 0;
-  virtual MEMORY_CONTROLLER& dram_view() = 0;
-  virtual std::vector<std::reference_wrapper<operable>> operable_view() = 0;
+namespace champsim {
+
+// Explicit environment: reads a hierarchical JSON configuration where each module
+// specifies its name, interface type ("module"), and model ("model").
+// References to other modules use "@name" syntax and are resolved at construction time.
+class environment final : public champsim::modules::environment_module {
+  // All modules indexed by interface type
+  std::map<std::string, std::vector<std::any>> modules_by_type_;
+
+  // Ordered list of (name, interface_type) pairs preserving JSON declaration order
+  std::vector<std::pair<std::string, std::string>> module_order_;
+
+  size_t num_cpus_ = 0;
+  unsigned block_size_ = 64;
+  unsigned page_size_ = 4096;
+  int deadlock_cycles_ = 500;
+
+  // Created modules by name, for @-reference resolution
+  std::map<std::string, std::any> modules_by_name_;
+  std::map<std::string, std::string> module_interfaces_;
+
+  // Builder params for test snooping
+  std::map<std::string, champsim::modules::ModuleBuilder> builder_params_;
+
+public:
+  explicit environment(champsim::modules::ModuleBuilder builder);
+
+  std::vector<std::any> view(const std::string& interface_type) const override;
+
+  size_t get_num_cpus() const override { return num_cpus_; }
+  unsigned get_block_size() const override { return block_size_; }
+  unsigned get_page_size() const override { return page_size_; }
+  int get_deadlock_cycles() const override { return deadlock_cycles_; }
+
+  const champsim::modules::ModuleBuilder get_builder_params(const std::string& module_name) const override {
+    auto it = builder_params_.find(module_name);
+    if (it != builder_params_.end()) return it->second;
+    return champsim::modules::ModuleBuilder();
+  }
 };
 
-namespace configured
-{
-template <unsigned long long ID>
-struct generated_environment;
-
-template <typename R, typename... PTWs>
-auto build(PTWs... builders)
-{
-  std::vector<R> retval{};
-  retval.reserve(sizeof...(builders));
-  (..., retval.emplace_back(builders));
-  return retval;
-}
-} // namespace configured
 } // namespace champsim
 
-#endif
+#endif // ENVIRONMENT_H

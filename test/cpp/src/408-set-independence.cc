@@ -27,16 +27,16 @@ struct test_fixture {
   }
 
   test_fixture(uint32_t set, uint32_t way)
-      : uut(champsim::cache_builder{champsim::defaults::default_l2c}
-                .name("408")
-                .sets(set)
-                .ways(way)
-                .offset_bits(champsim::data::bits{LOG2_BLOCK_SIZE})
-                .upper_levels({&mock_ul.queues})
-                .lower_level(&mock_ll.queues)
-                .hit_latency(hit_latency)
-                .tag_bandwidth(champsim::bandwidth::maximum_type{way})
-                .fill_bandwidth(champsim::bandwidth::maximum_type{way}))
+      : uut(champsim::modules::ModuleBuilder{"t408_cache", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
+                .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                .add_parameter("num_sets", static_cast<uint32_t>(set))
+                .add_parameter("num_ways", static_cast<uint32_t>(way))
+                .add_parameter("offset_bits", champsim::data::bits{LOG2_BLOCK_SIZE})
+                .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                .add_parameter("max_tag_bandwidth", champsim::bandwidth::maximum_type{way})
+                .add_parameter("max_fill_bandwidth", champsim::bandwidth::maximum_type{way}))
   {
     std::array<champsim::operable*, 3> elements{{&uut, &mock_ll, &mock_ul}};
 

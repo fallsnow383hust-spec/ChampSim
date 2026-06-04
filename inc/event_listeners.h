@@ -5,6 +5,7 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include <bitset>
 
 #include "events.h"
 #include "listeners/heartbeat.h"

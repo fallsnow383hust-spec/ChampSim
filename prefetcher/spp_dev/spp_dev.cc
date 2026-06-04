@@ -3,6 +3,8 @@
 #include <cassert>
 #include <iostream>
 
+champsim::modules::prefetcher::register_module<spp_dev> spp_dev_register("spp_dev");
+
 void spp_dev::prefetcher_initialize()
 {
   std::cout << "Initialize SIGNATURE TABLE" << std::endl;
@@ -29,17 +31,17 @@ void spp_dev::prefetcher_initialize()
 
 void spp_dev::prefetcher_cycle_operate() {}
 
-uint32_t spp_dev::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
+uint32_t spp_dev::prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
                                            uint32_t metadata_in)
 {
   champsim::page_number page{addr};
   uint32_t last_sig = 0, curr_sig = 0, depth = 0;
-  std::vector<uint32_t> confidence_q(intern_->MSHR_SIZE);
+  std::vector<uint32_t> confidence_q(cache_->get_mshr_size());
 
   typename spp_dev::offset_type::difference_type delta = 0;
-  std::vector<typename spp_dev::offset_type::difference_type> delta_q(intern_->MSHR_SIZE);
+  std::vector<typename spp_dev::offset_type::difference_type> delta_q(cache_->get_mshr_size());
 
-  for (uint32_t i = 0; i < intern_->MSHR_SIZE; i++) {
+  for (uint32_t i = 0; i < cache_->get_mshr_size(); i++) {
     confidence_q[i] = 0;
     delta_q[i] = 0;
   }
@@ -134,7 +136,7 @@ uint32_t spp_dev::prefetcher_cache_operate(champsim::address addr, champsim::add
   return metadata_in;
 }
 
-uint32_t spp_dev::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
+uint32_t spp_dev::prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr, uint32_t metadata_in)
 {
   if constexpr (FILTER_ON) {
     if constexpr (SPP_DEBUG_PRINT) {
@@ -519,7 +521,7 @@ void spp_dev::GLOBAL_REGISTER::update_entry(uint32_t pf_sig, uint32_t pf_confide
 
     // GHR replacement policy is based on the stored confidence value
     // An entry with the lowest confidence is selected as a victim
-    if (confidence[i] < min_conf) {
+    if (confidence[i] <= min_conf) {
       min_conf = confidence[i];
       victim_way = i;
     }

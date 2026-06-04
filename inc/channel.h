@@ -26,57 +26,16 @@
 
 #include "access_type.h"
 #include "address.h"
+#include "cache_stats.h"
 #include "champsim.h"
+#include "packet.h"
+#include "modules.h"
 
 namespace champsim
 {
 
-struct cache_queue_stats {
-  uint64_t RQ_ACCESS = 0;
-  uint64_t RQ_FULL = 0;
-  uint64_t RQ_TO_CACHE = 0;
-  uint64_t PQ_ACCESS = 0;
-  uint64_t PQ_FULL = 0;
-  uint64_t PQ_TO_CACHE = 0;
-  uint64_t WQ_ACCESS = 0;
-  uint64_t WQ_FULL = 0;
-  uint64_t WQ_TO_CACHE = 0;
-};
-
-class channel
+class channel: public champsim::modules::channel_module
 {
-  struct request {
-    bool is_translated = true;
-    bool response_requested = true;
-
-    uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
-    access_type type{access_type::LOAD};
-
-    uint32_t pf_metadata = 0;
-    uint32_t cpu = std::numeric_limits<uint32_t>::max();
-
-    champsim::address address{};
-    champsim::address v_address{};
-    champsim::address data{};
-    uint64_t instr_id = 0;
-    champsim::address ip{};
-
-    std::vector<uint64_t> instr_depend_on_me{};
-  };
-
-  struct response {
-    champsim::address address{};
-    champsim::address v_address{};
-    champsim::address data{};
-    uint32_t pf_metadata = 0;
-    std::vector<uint64_t> instr_depend_on_me{};
-
-    response(champsim::address addr, champsim::address v_addr, champsim::address data_, uint32_t pf_meta, std::vector<uint64_t> deps)
-        : address(addr), v_address(v_addr), data(data_), pf_metadata(pf_meta), instr_depend_on_me(deps)
-    {
-    }
-    explicit response(request req) : response(req.address, req.v_address, req.data, req.pf_metadata, req.instr_depend_on_me) {}
-  };
 
   template <typename R>
   bool do_add_queue(R& queue, std::size_t queue_size, const typename R::value_type& packet);
@@ -97,20 +56,28 @@ public:
 
   stats_type sim_stats{}, roi_stats{};
 
-  channel() = default;
-  channel(std::size_t rq_size, std::size_t pq_size, std::size_t wq_size, champsim::data::bits offset_bits, bool match_offset);
+  channel();
+  channel(champsim::modules::ModuleBuilder builder);
 
-  bool add_rq(const request_type& packet);
-  bool add_wq(const request_type& packet);
-  bool add_pq(const request_type& packet);
+  bool add_rq(const request_type& packet) override;
+  bool add_wq(const request_type& packet) override;
+  bool add_pq(const request_type& packet) override;
 
-  [[nodiscard]] std::size_t rq_occupancy() const;
-  [[nodiscard]] std::size_t wq_occupancy() const;
-  [[nodiscard]] std::size_t pq_occupancy() const;
+  [[nodiscard]] std::size_t rq_occupancy() const override;
+  [[nodiscard]] std::size_t wq_occupancy() const override;
+  [[nodiscard]] std::size_t pq_occupancy() const override;
 
-  [[nodiscard]] std::size_t rq_size() const;
-  [[nodiscard]] std::size_t wq_size() const;
-  [[nodiscard]] std::size_t pq_size() const;
+  [[nodiscard]] std::size_t rq_size() const override;
+  [[nodiscard]] std::size_t wq_size() const override;
+  [[nodiscard]] std::size_t pq_size() const override;
+
+  std::deque<request_type>& get_rq() override { return RQ; }
+  std::deque<request_type>& get_wq() override { return WQ; }
+  std::deque<request_type>& get_pq() override { return PQ; }
+  std::deque<response_type>& get_returned() override { return returned; }
+
+  stats_type& get_sim_stats() override { return sim_stats; }
+  stats_type& get_roi_stats() override { return roi_stats; }
 };
 } // namespace champsim
 

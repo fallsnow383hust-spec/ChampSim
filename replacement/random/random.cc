@@ -1,10 +1,11 @@
 #include "random.h"
 
-random::random(CACHE* cache) : random(cache, cache->NUM_WAY) {}
+champsim::modules::replacement::register_module<struct random> random_register("random");
+random::random(champsim::modules::ModuleBuilder builder) : random(builder.get_parent<champsim::modules::cache_module>(), builder.get_parent<champsim::modules::cache_module>()->num_ways()) {}
 
-random::random(CACHE* cache, long ways) : replacement(cache), dist(0, ways - 1) {}
+random::random(champsim::modules::cache_module* cache, long ways) : dist(0, ways - 1) {}
 
-long random::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const CACHE::BLOCK* current_set, uint64_t ip, uint64_t full_addr,
+long random::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const champsim::cache_block* current_set, champsim::address ip, champsim::address full_addr,
                          access_type type)
 {
   return dist(rng);

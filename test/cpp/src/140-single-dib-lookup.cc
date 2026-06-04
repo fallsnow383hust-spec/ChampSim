@@ -3,6 +3,7 @@
 #include "instr.h"
 #include "mocks.hpp"
 #include "ooo_cpu.h"
+#include "defaults.hpp"
 
 SCENARIO("A late-added instruction does not miss the IFB")
 {
@@ -10,13 +11,13 @@ SCENARIO("A late-added instruction does not miss the IFB")
   {
     release_MRC mock_L1I;
     do_nothing_MRC mock_L1D;
-    O3_CPU uut{champsim::core_builder{}
-                   .dib_window(4)
-                   .ifetch_buffer_size(2)
-                   .l1i_bandwidth(champsim::bandwidth::maximum_type{10})
-                   .l1d_bandwidth(champsim::bandwidth::maximum_type{10})
-                   .fetch_queues(&mock_L1I.queues)
-                   .data_queues(&mock_L1D.queues)};
+    O3_CPU uut{champsim::modules::ModuleBuilder{"t140_core", "DEFAULT_CORE", champsim::defaults::default_core()}
+                   .add_parameter("dib_window", static_cast<std::size_t>(4))
+                   .add_parameter("ifetch_buffer_size", static_cast<uint32_t>(2))
+                   .add_parameter("l1i_bandwidth", champsim::bandwidth::maximum_type{10})
+                   .add_parameter("l1d_bandwidth", champsim::bandwidth::maximum_type{10})
+                   .add_parameter("fetch_queues", static_cast<champsim::modules::channel_module*>(&mock_L1I.queues))
+                   .add_parameter("data_queues", static_cast<champsim::modules::channel_module*>(&mock_L1D.queues))};
 
     std::array<champsim::operable*, 3> elements{{&uut, &mock_L1I, &mock_L1D}};
 

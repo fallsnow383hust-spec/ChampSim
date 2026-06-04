@@ -8,16 +8,25 @@
 template <uint64_t bypass_addr>
 struct bypass_replacement : champsim::modules::replacement {
   using replacement::replacement;
-  long find_victim(uint32_t, uint64_t, long, const CACHE::BLOCK*, champsim::address, champsim::address addr, uint32_t)
+
+  bypass_replacement(CACHE* c) {(void)c;}
+
+  void initialize_replacement() override {}
+  long find_victim(uint32_t, uint64_t, long, const champsim::cache_block*, champsim::address, champsim::address addr, access_type) override
   {
     if (addr == champsim::address{bypass_addr})
       return 1L;
     return 0L;
   }
-};
 
-SCENARIO("The replacement policy can bypass")
-{
+  void update_replacement_state(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type, bool) override {}
+  void replacement_cache_fill(uint32_t, long, long, champsim::address, champsim::address, champsim::address, access_type) override {}
+  void replacement_final_stats() override {}
+
+  bypass_replacement(champsim::modules::ModuleBuilder) {}
+};
+champsim::modules::replacement::register_module<bypass_replacement<0xcafebabe>> bypass_replacement_register("bypass_replacement");
+SCENARIO("The replacement policy can bypass") {
   using namespace std::literals;
   GIVEN("A single cache")
   {
@@ -26,16 +35,18 @@ SCENARIO("The replacement policy can bypass")
     do_nothing_MRC mock_ll;
     to_wq_MRP mock_ul_seed;
     to_rq_MRP mock_ul_test;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l2c}
-                  .name("441-uut")
-                  .sets(1)
-                  .ways(1)
-                  .upper_levels({{&mock_ul_seed.queues, &mock_ul_test.queues}})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .offset_bits(champsim::data::bits{})
-                  .replacement<bypass_replacement<0xcafebabe>>()};
+    CACHE uut{champsim::modules::ModuleBuilder{"t441_cache", "DEFAULT_CACHE", champsim::defaults::default_l2c()}
+      .add_parameter("mshr_size", static_cast<uint32_t>(8))
+      .add_parameter("num_sets", static_cast<uint32_t>(1))
+      .add_parameter("num_ways", static_cast<uint32_t>(1))
+      .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul_seed.queues, &mock_ul_test.queues})
+      .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+      .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+      .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+      .add_parameter("offset_bits", champsim::data::bits{})
+      .clear_submodules("replacement")
+      .add_submodule("replacement", champsim::modules::ModuleBuilder{"t441_bypass_replacement", "bypass_replacement"})
+    };
 
     std::array<champsim::operable*, 4> elements{{&mock_ll, &uut, &mock_ul_seed, &mock_ul_test}};
 

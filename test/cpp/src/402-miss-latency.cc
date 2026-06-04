@@ -18,13 +18,13 @@ SCENARIO("A cache returns a miss after the specified latency")
     constexpr auto fill_latency = 2;
     do_nothing_MRC mock_ll{miss_latency};
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("402a-uut-" + std::string(str))
-                  .upper_levels({&mock_ul.queues})
-                  .lower_level(&mock_ll.queues)
-                  .hit_latency(hit_latency)
-                  .fill_latency(fill_latency)
-                  .prefetch_activate(access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION)};
+    CACHE uut{champsim::modules::ModuleBuilder{"t402_cache_0", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                  .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                  .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                  .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                  .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+                  .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION})};
 
     std::array<champsim::operable*, 3> elements{{&uut, &mock_ll, &mock_ul}};
 
@@ -109,18 +109,18 @@ SCENARIO("A cache completes a fill after the specified latency")
     constexpr auto fill_latency = 2;
     do_nothing_MRC mock_ll{miss_latency};
     to_wq_MRP mock_ul;
-    auto builder = champsim::cache_builder{champsim::defaults::default_l1d}
-                       .name("402b-uut-" + std::string(str))
-                       .upper_levels({&mock_ul.queues})
-                       .lower_level(&mock_ll.queues)
-                       .hit_latency(hit_latency)
-                       .fill_latency(fill_latency)
-                       .prefetch_activate(access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION);
+    auto builder = champsim::modules::ModuleBuilder{"t402_cache_1", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                       .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                       .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues})
+                       .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                       .add_parameter("hit_latency", static_cast<uint64_t>(hit_latency))
+                       .add_parameter("fill_latency", static_cast<uint64_t>(fill_latency))
+                       .add_parameter("pref_activate_mask", std::vector<access_type>{access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION});
 
     if (match_offset)
-      builder = builder.set_wq_checks_full_addr();
+      builder = builder.add_parameter("match_offset_bits", true);
     else
-      builder = builder.reset_wq_checks_full_addr();
+      builder = builder.add_parameter("match_offset_bits", false);
 
     CACHE uut{builder};
 
@@ -194,11 +194,11 @@ SCENARIO("The MSHR bandwidth limits the number of outstanding misses")
     release_MRC mock_ll;
     to_rq_MRP mock_ul_seed;
     to_rq_MRP mock_ul_test;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}
-                  .name("402c-uut")
-                  .upper_levels({{&mock_ul_seed.queues, &mock_ul_test.queues}})
-                  .lower_level(&mock_ll.queues)
-                  .mshr_size(1)};
+    CACHE uut{champsim::modules::ModuleBuilder{"t402_cache_2", "DEFAULT_CACHE", champsim::defaults::default_l1d()}
+                  .add_parameter("mshr_size", static_cast<uint32_t>(8))
+                  .add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul_seed.queues, &mock_ul_test.queues})
+                  .add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&mock_ll.queues))
+                  .add_parameter("mshr_size", static_cast<uint32_t>(1))};
 
     std::array<champsim::operable*, 4> elements{{&mock_ll, &uut, &mock_ul_seed, &mock_ul_test}};
 
@@ -257,9 +257,9 @@ SCENARIO("A lower-level queue refusal limits the number of outstanding misses")
 {
   GIVEN("An empty cache")
   {
-    champsim::channel refusal_channel{0, 0, 0, champsim::data::bits{}, 0}; // Refuses all packets
+    champsim::channel refusal_channel{champsim::modules::ModuleBuilder{"t402_refusal_channel", "DEFAULT_CHANNEL", champsim::defaults::default_channel()}.add_parameter("rq_size", static_cast<std::size_t>(0)).add_parameter("wq_size", static_cast<std::size_t>(0)).add_parameter("pq_size", static_cast<std::size_t>(0))}; // Refuses all packets (zero-sized queues)
     to_rq_MRP mock_ul;
-    CACHE uut{champsim::cache_builder{champsim::defaults::default_l1d}.name("402c-uut").upper_levels({&mock_ul.queues}).lower_level(&refusal_channel)};
+    CACHE uut{champsim::modules::ModuleBuilder{"t402_cache_3", "DEFAULT_CACHE", champsim::defaults::default_l1d().add_parameter("mshr_size", static_cast<uint32_t>(8))}.add_parameter("upper_levels", std::vector<champsim::modules::channel_module*>{&mock_ul.queues}).add_parameter("lower_level", static_cast<champsim::modules::channel_module*>(&refusal_channel))};
 
     std::array<champsim::operable*, 2> elements{{&uut, &mock_ul}};
 

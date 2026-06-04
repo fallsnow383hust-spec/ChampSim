@@ -1,0 +1,57 @@
+name: Valgrind Memory Check
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+    paths-ignore:
+      - '.gitignore'
+      - 'docs/**'
+      - '*.md'
+      - '.github/workflows/*.yml'
+      # re-include current file to not be excluded
+      - '!.github/workflows/valgrind.yml'
+
+  pull_request:
+    branches:
+      - master
+      - develop
+    paths-ignore:
+      - '.gitignore'
+      - 'docs/**'
+      - '*.md'
+      - '.github/workflows/*.yml'
+      # re-include current file to not be excluded
+      - '!.github/workflows/valgrind.yml'
+
+jobs:
+  memcheck:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Set up basic environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl zip unzip tar valgrind
+
+    - uses: actions/checkout@v6
+      with:
+        submodules: 'true'
+
+    - name: Set up vcpkg
+      run: |
+        vcpkg/bootstrap-vcpkg.sh
+        vcpkg/vcpkg install
+
+    - name: Build
+      run: make
+
+    - name: Run valgrind (all modules)
+      run: |
+        valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 \
+          ./bin/champsim --config test/config/all-modules.json -w1000 -i1000 \
+          -- <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc) \
+             <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc) \
+             <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc) \
+             <(curl -s https://dpc3.compas.cs.stonybrook.edu/champsim-traces/speccpu/400.perlbench-41B.champsimtrace.xz | xz -dc)
