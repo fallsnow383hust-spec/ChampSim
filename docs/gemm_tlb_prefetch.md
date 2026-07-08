@@ -47,12 +47,17 @@ bin/champsim-pc-role-tlb-stride \
   "$trace" | tee "$out/pc_role_tlb_stride.txt"
 ```
 
-If the generated GEMM trace is short, set warmup to 0 and simulate all records:
+If the generated GEMM trace is short, set warmup to 0 and simulate about one trace pass. For a CSV with 524288 GEMM records, the converter emits 524288 * 3 = 1572864 ChampSim instructions, so use 1600000 rather than 1000000000:
 
 ```bash
+bin/champsim-baseline-no-tlb-prefetch \
+  --warmup-instructions 0 \
+  --simulation-instructions 1600000 \
+  "$trace" | tee "$out/baseline.onepass.txt"
+
 bin/champsim-pc-role-tlb-stride \
   --warmup-instructions 0 \
-  --simulation-instructions 1000000000 \
+  --simulation-instructions 1600000 \
   "$trace" | tee "$out/pc_role_tlb_stride.full.txt"
 ```
 

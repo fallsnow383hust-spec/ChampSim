@@ -35,10 +35,10 @@ uint32_t pc_role_tlb_stride::prefetcher_cache_operate(champsim::address addr, ch
   if (!is_demand_translation || cache_hit)
     return metadata_in;
 
-  // For TLB modules, ChampSim calls the prefetcher with module_address(pkt),
-  // i.e. the page number with the page offset already stripped. Do not wrap it
-  // in champsim::page_number again, or the VPN is shifted twice.
-  const auto vpn = as_u64(addr);
+  // ChampSim passes a page-aligned address to TLB prefetchers. Train in VPN
+  // units, then convert the predicted VPN back to a page-base address before
+  // calling prefetch_line().
+  const auto vpn = as_u64(champsim::page_number{addr});
   const auto key = as_u64(ip);
   const auto idx = key % TRACKER_ENTRIES;
   auto& entry = table[idx];
