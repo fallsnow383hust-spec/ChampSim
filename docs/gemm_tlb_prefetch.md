@@ -6,10 +6,13 @@ This tree contains a DTLB prefetcher model for the PIM/AMX GEMM trace experiment
 - `gemm_configs/baseline_no_tlb_prefetch.json`: same CPU/TLB/PTW setting, no DTLB prefetcher.
 - `gemm_configs/pc_role_tlb_stride.json`: enables `pc_role_tlb_stride` on DTLB.
 - `gemm_configs/stlb_pc_role_tlb_stride.json`: enables `pc_role_tlb_stride` on STLB; training happens only on STLB misses.
+- `gemm_configs/stlb_pc_role_tlb_stride_realfill.json`: enables `pc_role_tlb_stride_realfill` on STLB; predicted VPNs are sent through real `prefetch_line(pred_addr, true)` with `STLB.prefetch_as_load=true`.
 
 The implemented prefetcher is intentionally close to the offline model used in `gemm_realamx`: it observes DTLB demand misses from LOAD/WRITE/RFO, indexes the stride table by instruction PC, learns VPN stride, and models a degree-1 page prefetch after confidence reaches 2. For true `PC+role`, encode role into the trace IP before running ChampSim, for example `ip = (real_pc << 2) | role_id`, where `role_id = 0/1/2` means A/B/C. If the trace keeps the original machine PC unchanged, ChampSim will evaluate only a PC-indexed prefetcher, not PC+role.
 
 Important: `pc_role_tlb_stride` currently runs in shadow/evaluation mode. It does not call ChampSim `prefetch_line()` because real TLB prefetch injection deadlocks in this ChampSim version on the synthetic GEMM trace. Instead it keeps an internal 128-entry shadow prefetch buffer and reports `useful_shadow_on_tlb_miss`, `redundant_shadow_on_tlb_hit`, and `shadow_evictions`. Therefore ChampSim's DTLB/STLB/PTW stats remain the baseline hardware stats; use the module counters to judge prefetch coverage.
+
+`pc_role_tlb_stride_realfill` is the minimum real-fill experiment. It should only be used with `gemm_configs/stlb_pc_role_tlb_stride_realfill.json`. It keeps the same shadow counters, but also calls `prefetch_line(pred_addr, true)` so a successful prefetch can fill STLB and affect ChampSim's STLB misses, PTW traffic, cycles, and IPC.
 
 ## Build on the server
 
@@ -35,6 +38,11 @@ cp bin/champsim bin/champsim-pc-role-tlb-stride
 ./config.sh gemm_configs/stlb_pc_role_tlb_stride.json
 make -j"$(nproc)"
 cp bin/champsim bin/champsim-stlb-pc-role-tlb-stride
+
+# STLB real-fill prefetcher binary
+./config.sh gemm_configs/stlb_pc_role_tlb_stride_realfill.json
+make -j"$(nproc)"
+cp bin/champsim bin/champsim-stlb-pc-role-tlb-stride-realfill
 ```
 
 ## Run baseline and prefetcher
@@ -72,6 +80,11 @@ bin/champsim-stlb-pc-role-tlb-stride \
   --warmup-instructions 0 \
   --simulation-instructions 1600000 \
   "$trace" | tee "$out/stlb_pc_role_tlb_stride.full.txt"
+
+bin/champsim-stlb-pc-role-tlb-stride-realfill \
+  --warmup-instructions 0 \
+  --simulation-instructions 1600000 \
+  "$trace" | tee "$out/stlb_pc_role_tlb_stride_realfill.full.txt"
 ```
 
 ## Trace requirement
