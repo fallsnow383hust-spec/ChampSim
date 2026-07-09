@@ -1,5 +1,7 @@
 #include "pc_role_tlb_stride_realfill.h"
 
+#include <algorithm>
+
 #include <fmt/core.h>
 
 #include "cache.h"
@@ -13,8 +15,62 @@ uint64_t as_u64(AddressSlice addr)
 }
 } // namespace
 
+uint8_t pc_role_tlb_stride_realfill::role_from_ip(champsim::address ip)
+{
+  const auto role = as_u64(ip) & 0x3ULL;
+  return role < ROLE_COUNT ? static_cast<uint8_t>(role) : 0;
+}
+
+std::string_view pc_role_tlb_stride_realfill::role_name(uint8_t role)
+{
+  switch (role) {
+  case 0:
+    return "A";
+  case 1:
+    return "B";
+  case 2:
+    return "C";
+  default:
+    return "unknown";
+  }
+}
+
+std::size_t pc_role_tlb_stride_realfill::timeliness_bucket(uint64_t distance)
+{
+  if (distance <= 1)
+    return 0;
+  if (distance <= 4)
+    return 1;
+  if (distance <= 16)
+    return 2;
+  if (distance <= 64)
+    return 3;
+  if (distance <= 256)
+    return 4;
+  return 5;
+}
+
+void pc_role_tlb_stride_realfill::record_timeliness(uint8_t role, uint64_t distance)
+{
+  auto& stats = per_role[role];
+  stats.timeliness_sum += distance;
+  stats.timeliness_max = std::max(stats.timeliness_max, distance);
+  ++stats.timeliness_buckets[timeliness_bucket(distance)];
+}
+
+void pc_role_tlb_stride_realfill::record_real_timeliness(uint8_t role, uint64_t distance)
+{
+  auto& stats = per_role[role];
+  ++stats.real_useful_with_pending;
+  stats.real_timeliness_sum += distance;
+  stats.real_timeliness_max = std::max(stats.real_timeliness_max, distance);
+  ++stats.real_timeliness_buckets[timeliness_bucket(distance)];
+}
+
 void pc_role_tlb_stride_realfill::prefetcher_initialize()
 {
+  demand_seq = 0;
+  per_role = {};
   trained = 0;
   predictions = 0;
   issued_shadow = 0;
@@ -38,14 +94,39 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
   if (!is_demand_translation)
     return metadata_in;
 
+  ++demand_seq;
+  const auto role = role_from_ip(ip);
+  auto& role_stat = per_role[role];
+  ++role_stat.demand_access;
+
+  if (!cache_hit)
+    ++role_stat.demand_miss;
+
+  if (useful_prefetch)
+    ++role_stat.champ_prefetch_useful_callback;
+
   const auto vpn = as_u64(champsim::page_number{addr});
   const auto key = as_u64(ip);
 
-  if (shadow_buffer.erase(vpn) != 0) {
-    if (cache_hit)
+  const auto pending_it = shadow_buffer.find(vpn);
+  if (pending_it != shadow_buffer.end()) {
+    const auto issue_role = pending_it->second.role;
+    const auto distance = demand_seq - pending_it->second.issue_seq;
+
+    if (useful_prefetch)
+      record_real_timeliness(issue_role, distance);
+
+    if (cache_hit) {
       ++shadow_redundant_on_hit;
-    else
+      ++per_role[issue_role].shadow_timely_on_hit;
+      record_timeliness(issue_role, distance);
+    } else {
       ++shadow_useful_on_miss;
+      ++per_role[issue_role].shadow_useful_on_miss;
+      record_timeliness(issue_role, distance);
+    }
+
+    shadow_buffer.erase(pending_it);
   }
 
   // Train only on misses in the attached TLB level. With the real-fill config,
@@ -59,6 +140,7 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
   if (!entry.valid || entry.tag != key) {
     entry = tracker_entry{key, vpn, 0, 0, true};
     ++trained;
+    ++role_stat.trained;
     return metadata_in;
   }
 
@@ -72,6 +154,7 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
 
   entry.last_vpn = vpn;
   ++trained;
+  ++role_stat.trained;
 
   if (stride == 0 || entry.confidence < CONFIDENCE_THRESHOLD)
     return metadata_in;
@@ -84,23 +167,32 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
     const auto pred_vpn_u64 = static_cast<uint64_t>(pred_vpn);
     const auto pred_addr = champsim::address{pred_vpn_u64 << LOG2_PAGE_SIZE};
     ++predictions;
+    ++role_stat.predictions;
 
-    if (shadow_buffer.insert(pred_vpn_u64).second) {
+    if (shadow_buffer.emplace(pred_vpn_u64, pending_prefetch{demand_seq, role}).second) {
       shadow_fifo.push_back(pred_vpn_u64);
       ++issued_shadow;
+      ++role_stat.issued_shadow;
     }
 
     while (shadow_fifo.size() > SHADOW_BUFFER_ENTRIES) {
       const auto evicted = shadow_fifo.front();
       shadow_fifo.pop_front();
-      if (shadow_buffer.erase(evicted) != 0)
+      const auto evicted_it = shadow_buffer.find(evicted);
+      if (evicted_it != shadow_buffer.end()) {
+        ++per_role[evicted_it->second.role].shadow_evictions;
+        shadow_buffer.erase(evicted_it);
         ++shadow_evictions;
+      }
     }
 
-    if (prefetch_line(pred_addr, true, metadata_in))
+    if (prefetch_line(pred_addr, true, metadata_in)) {
       ++issued_real;
-    else
+      ++role_stat.issued_real;
+    } else {
       ++real_rejected;
+      ++role_stat.real_rejected;
+    }
   }
 
   return metadata_in;
@@ -123,4 +215,36 @@ void pc_role_tlb_stride_realfill::prefetcher_final_stats()
   fmt::print("pc_role_tlb_stride_realfill redundant_shadow_on_tlb_hit: {}\n", shadow_redundant_on_hit);
   fmt::print("pc_role_tlb_stride_realfill shadow_evictions: {}\n", shadow_evictions);
   fmt::print("pc_role_tlb_stride_realfill champ_prefetch_useful_callback: {}\n", champ_prefetch_useful_callback);
+
+  for (uint8_t role = 0; role < ROLE_COUNT; ++role) {
+    const auto& stats = per_role[role];
+    const auto shadow_hits = stats.shadow_timely_on_hit + stats.shadow_useful_on_miss;
+    const auto avg_distance = shadow_hits ? static_cast<double>(stats.timeliness_sum) / static_cast<double>(shadow_hits) : 0.0;
+
+    fmt::print("pc_role_tlb_stride_realfill role {} demand_access: {}\n", role_name(role), stats.demand_access);
+    fmt::print("pc_role_tlb_stride_realfill role {} demand_miss: {}\n", role_name(role), stats.demand_miss);
+    fmt::print("pc_role_tlb_stride_realfill role {} trained: {}\n", role_name(role), stats.trained);
+    fmt::print("pc_role_tlb_stride_realfill role {} predictions: {}\n", role_name(role), stats.predictions);
+    fmt::print("pc_role_tlb_stride_realfill role {} issued_shadow: {}\n", role_name(role), stats.issued_shadow);
+    fmt::print("pc_role_tlb_stride_realfill role {} issued_real: {}\n", role_name(role), stats.issued_real);
+    fmt::print("pc_role_tlb_stride_realfill role {} real_rejected: {}\n", role_name(role), stats.real_rejected);
+    fmt::print("pc_role_tlb_stride_realfill role {} shadow_timely_on_hit: {}\n", role_name(role), stats.shadow_timely_on_hit);
+    fmt::print("pc_role_tlb_stride_realfill role {} shadow_useful_on_miss: {}\n", role_name(role), stats.shadow_useful_on_miss);
+    fmt::print("pc_role_tlb_stride_realfill role {} shadow_evictions: {}\n", role_name(role), stats.shadow_evictions);
+    fmt::print("pc_role_tlb_stride_realfill role {} champ_prefetch_useful_callback: {}\n", role_name(role), stats.champ_prefetch_useful_callback);
+    fmt::print("pc_role_tlb_stride_realfill role {} real_useful_with_pending: {}\n", role_name(role), stats.real_useful_with_pending);
+    fmt::print("pc_role_tlb_stride_realfill role {} timeliness_avg_demand_events: {:.2f}\n", role_name(role), avg_distance);
+    fmt::print("pc_role_tlb_stride_realfill role {} timeliness_max_demand_events: {}\n", role_name(role), stats.timeliness_max);
+    fmt::print("pc_role_tlb_stride_realfill role {} timeliness_buckets <=1:{} <=4:{} <=16:{} <=64:{} <=256:{} >256:{}\n", role_name(role),
+               stats.timeliness_buckets[0], stats.timeliness_buckets[1], stats.timeliness_buckets[2], stats.timeliness_buckets[3],
+               stats.timeliness_buckets[4], stats.timeliness_buckets[5]);
+
+    const auto real_avg_distance =
+        stats.real_useful_with_pending ? static_cast<double>(stats.real_timeliness_sum) / static_cast<double>(stats.real_useful_with_pending) : 0.0;
+    fmt::print("pc_role_tlb_stride_realfill role {} real_timeliness_avg_demand_events: {:.2f}\n", role_name(role), real_avg_distance);
+    fmt::print("pc_role_tlb_stride_realfill role {} real_timeliness_max_demand_events: {}\n", role_name(role), stats.real_timeliness_max);
+    fmt::print("pc_role_tlb_stride_realfill role {} real_timeliness_buckets <=1:{} <=4:{} <=16:{} <=64:{} <=256:{} >256:{}\n", role_name(role),
+               stats.real_timeliness_buckets[0], stats.real_timeliness_buckets[1], stats.real_timeliness_buckets[2],
+               stats.real_timeliness_buckets[3], stats.real_timeliness_buckets[4], stats.real_timeliness_buckets[5]);
+  }
 }
