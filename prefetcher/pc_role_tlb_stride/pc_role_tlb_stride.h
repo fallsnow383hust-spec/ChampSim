@@ -3,6 +3,8 @@
 
 #include <array>
 #include <cstdint>
+#include <deque>
+#include <unordered_set>
 
 #include "address.h"
 #include "champsim.h"
@@ -18,15 +20,21 @@ struct pc_role_tlb_stride : public champsim::modules::prefetcher {
   };
 
   static constexpr std::size_t TRACKER_ENTRIES = 1024;
+  static constexpr std::size_t SHADOW_BUFFER_ENTRIES = 128;
   static constexpr int CONFIDENCE_THRESHOLD = 2;
   static constexpr int PREFETCH_DEGREE = 1;
 
   std::array<tracker_entry, TRACKER_ENTRIES> table{};
+  std::deque<uint64_t> shadow_fifo{};
+  std::unordered_set<uint64_t> shadow_buffer{};
 
   uint64_t issued = 0;
   uint64_t useful = 0;
   uint64_t trained = 0;
   uint64_t predictions = 0;
+  uint64_t shadow_useful_on_miss = 0;
+  uint64_t shadow_redundant_on_hit = 0;
+  uint64_t shadow_evictions = 0;
 
   explicit pc_role_tlb_stride(CACHE* cache) : champsim::modules::prefetcher(cache) {}
 

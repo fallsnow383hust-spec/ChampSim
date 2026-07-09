@@ -6,7 +6,11 @@
 
 namespace
 {
-uint64_t as_u64(champsim::address addr) { return addr.to<uint64_t>(); }
+template <typename AddressSlice>
+uint64_t as_u64(AddressSlice addr)
+{
+  return addr.template to<uint64_t>();
+}
 } // namespace
 
 void pc_role_tlb_stride::prefetcher_initialize()
@@ -15,6 +19,11 @@ void pc_role_tlb_stride::prefetcher_initialize()
   useful = 0;
   trained = 0;
   predictions = 0;
+  shadow_useful_on_miss = 0;
+  shadow_redundant_on_hit = 0;
+  shadow_evictions = 0;
+  shadow_fifo.clear();
+  shadow_buffer.clear();
 }
 
 uint32_t pc_role_tlb_stride::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch,
@@ -24,15 +33,17 @@ uint32_t pc_role_tlb_stride::prefetcher_cache_operate(champsim::address addr, ch
     ++useful;
 
   /*
-   * Intended use: attach this module to DTLB.
+   * Intended use: attach this module to a TLB level, either DTLB or STLB.
    *
-   * The module is trained only on demand DTLB misses. The index is the dynamic
-   * instruction PC. For PIM-GEMM experiments, encode the operand role into the
-   * trace IP, e.g. ip = base_pc + role_id, so the hardware model becomes
-   * PC+role without changing ChampSim's trace format.
+   * The module is trained only on misses in the TLB level where it is attached.
+   * If attached to DTLB, this means DTLB misses. If attached to STLB, this means
+   * STLB misses. The index is the dynamic instruction PC. For PIM-GEMM
+   * experiments, encode the operand role into the trace IP, e.g.
+   * ip = base_pc + role_id, so the hardware model becomes PC+role without
+   * changing ChampSim's trace format.
    */
   const bool is_demand_translation = (type == access_type::LOAD || type == access_type::WRITE || type == access_type::RFO);
-  if (!is_demand_translation || cache_hit)
+  if (!is_demand_translation)
     return metadata_in;
 
   // ChampSim passes a page-aligned address to TLB prefetchers. Train in VPN
@@ -40,6 +51,26 @@ uint32_t pc_role_tlb_stride::prefetcher_cache_operate(champsim::address addr, ch
   // calling prefetch_line().
   const auto vpn = as_u64(champsim::page_number{addr});
   const auto key = as_u64(ip);
+
+  /*
+   * Shadow/evaluation mode:
+   *
+   * ChampSim's current TLB prefetch path can deadlock for this synthetic trace
+   * when a module injects real TLB PQ requests with prefetch_line(). To keep
+   * the experiment stable, the prefetcher models a small TLB-prefetch buffer
+   * internally and reports how many demand TLB misses would have been covered.
+   * This does not change ChampSim's architectural DTLB/STLB/PTW stats.
+   */
+  if (shadow_buffer.erase(vpn) != 0) {
+    if (cache_hit)
+      ++shadow_redundant_on_hit;
+    else
+      ++shadow_useful_on_miss;
+  }
+
+  if (cache_hit)
+    return metadata_in;
+
   const auto idx = key % TRACKER_ENTRIES;
   auto& entry = table[idx];
 
@@ -68,10 +99,19 @@ uint32_t pc_role_tlb_stride::prefetcher_cache_operate(champsim::address addr, ch
     if (pred_vpn < 0)
       continue;
 
-    const auto pred_addr = champsim::address{static_cast<uint64_t>(pred_vpn) << LOG2_PAGE_SIZE};
+    const auto pred_vpn_u64 = static_cast<uint64_t>(pred_vpn);
     ++predictions;
-    if (prefetch_line(pred_addr, true, metadata_in))
+    if (shadow_buffer.insert(pred_vpn_u64).second) {
+      shadow_fifo.push_back(pred_vpn_u64);
       ++issued;
+    }
+
+    while (shadow_fifo.size() > SHADOW_BUFFER_ENTRIES) {
+      const auto evicted = shadow_fifo.front();
+      shadow_fifo.pop_front();
+      if (shadow_buffer.erase(evicted) != 0)
+        ++shadow_evictions;
+    }
   }
 
   return metadata_in;
@@ -87,6 +127,9 @@ void pc_role_tlb_stride::prefetcher_final_stats()
 {
   fmt::print("pc_role_tlb_stride trained: {}\n", trained);
   fmt::print("pc_role_tlb_stride predictions: {}\n", predictions);
-  fmt::print("pc_role_tlb_stride issued: {}\n", issued);
-  fmt::print("pc_role_tlb_stride useful: {}\n", useful);
+  fmt::print("pc_role_tlb_stride issued_shadow: {}\n", issued);
+  fmt::print("pc_role_tlb_stride useful_shadow_on_tlb_miss: {}\n", shadow_useful_on_miss);
+  fmt::print("pc_role_tlb_stride redundant_shadow_on_tlb_hit: {}\n", shadow_redundant_on_hit);
+  fmt::print("pc_role_tlb_stride shadow_evictions: {}\n", shadow_evictions);
+  fmt::print("pc_role_tlb_stride champ_prefetch_useful_callback: {}\n", useful);
 }
