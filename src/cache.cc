@@ -641,7 +641,7 @@ void CACHE::finish_translation(const response_type& packet)
     entry.is_translated = true;                                                                          // This entry is now translated
     if (gemm_translation_probe::should_probe_cache(this->NAME)) {
       const auto cycle = static_cast<uint64_t>(this->current_time.time_since_epoch() / this->clock_period);
-      gemm_translation_probe::state.on_l1d_translation_done(entry.instr_id, entry.ip.to<uint64_t>(), cycle);
+      gemm_translation_probe::state.on_l1d_translation_done(entry.instr_id, entry.ip.template to<uint64_t>(), cycle);
     }
 
     if constexpr (champsim::debug_print) {
