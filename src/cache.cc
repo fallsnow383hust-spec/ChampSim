@@ -27,6 +27,7 @@
 #include "champsim.h"
 #include "chrono.h"
 #include "deadlock.h"
+#include "gemm_translation_probe.h"
 #include "instruction.h"
 #include "util/algorithm.h"
 #include "util/bits.h"
@@ -253,6 +254,8 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   auto way = std::find_if(set_begin, set_end, [matcher = matches_address(handle_pkt.address)](const auto& x) { return x.valid && matcher(x); });
   const auto hit = (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
+  if (handle_pkt.type == access_type::LOAD || handle_pkt.type == access_type::WRITE || handle_pkt.type == access_type::RFO)
+    gemm_translation_probe::state.on_tlb_access(NAME, handle_pkt.ip.to<uint64_t>(), hit);
 
   if constexpr (champsim::debug_print) {
     fmt::print("[{}] {} instr_id: {} address: {} v_address: {} data: {} set: {} way: {} ({}) type: {} cycle: {}\n", NAME, __func__, handle_pkt.instr_id,
@@ -636,6 +639,10 @@ void CACHE::finish_translation(const response_type& packet)
     [[maybe_unused]] auto old_address = entry.address;
     entry.address = champsim::address{champsim::splice(p_page, champsim::page_offset{entry.v_address})}; // translated address
     entry.is_translated = true;                                                                          // This entry is now translated
+    if (gemm_translation_probe::should_probe_cache(this->NAME)) {
+      const auto cycle = static_cast<uint64_t>(this->current_time.time_since_epoch() / this->clock_period);
+      gemm_translation_probe::state.on_l1d_translation_done(entry.instr_id, entry.ip.to<uint64_t>(), cycle);
+    }
 
     if constexpr (champsim::debug_print) {
       fmt::print("[{}_TRANSLATE] finish_translation old: {} paddr: {} vaddr: {} type: {} cycle: {}\n", this->NAME, old_address, entry.address, entry.v_address,
@@ -675,6 +682,10 @@ void CACHE::issue_translation(tag_lookup_type& q_entry) const
     fwd_pkt.is_translated = true;
 
     q_entry.translate_issued = lower_translate->add_rq(fwd_pkt);
+    if (q_entry.translate_issued && gemm_translation_probe::should_probe_cache(this->NAME)) {
+      const auto cycle = static_cast<uint64_t>(this->current_time.time_since_epoch() / this->clock_period);
+      gemm_translation_probe::state.on_l1d_translation_start(q_entry.instr_id, cycle);
+    }
     if constexpr (champsim::debug_print) {
       if (q_entry.translate_issued) {
         fmt::print("[TRANSLATE] do_issue_translation instr_id: {} paddr: {} vaddr: {} type: {}\n", q_entry.instr_id, q_entry.address, q_entry.v_address,
