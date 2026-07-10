@@ -54,7 +54,7 @@ struct probe_state {
   std::unordered_map<uint64_t, fused_record> fused;
   std::array<role_stats, 3> roles{};
   fused_stats fused_summary{};
-  std::array<psc_level_stats, 6> psc{};
+  std::array<psc_level_stats, 3> psc{};
   uint64_t ptw_requests = 0;
 
   ~probe_state() { print(); }
@@ -169,25 +169,76 @@ struct probe_state {
 
   void on_ptw_request() { ++ptw_requests; }
 
-  void on_psc_lookup(std::size_t level, bool hit)
+  static std::string_view psc_name(std::size_t slot)
   {
-    if (level >= psc.size())
+    switch (slot) {
+    case 0:
+      return "PML4";
+    case 1:
+      return "PDP";
+    case 2:
+      return "PD";
+    default:
+      return "unknown";
+    }
+  }
+
+  static bool psc_lookup_slot(std::size_t total_psc_levels, std::size_t lookup_index, std::size_t& slot)
+  {
+    if (total_psc_levels == 3) {
+      if (lookup_index >= 3)
+        return false;
+      slot = lookup_index;
+      return true;
+    }
+
+    if (total_psc_levels == 4) {
+      // Ignore an accidental/legacy top pscl5 entry. The user's target model
+      // has exactly three PSCs: PML4, PDP, PD.
+      if (lookup_index == 0 || lookup_index > 3)
+        return false;
+      slot = lookup_index - 1;
+      return true;
+    }
+
+    if (lookup_index >= 3)
+      return false;
+    slot = lookup_index;
+    return true;
+  }
+
+  static bool psc_internal_level_slot(std::size_t total_psc_levels, std::size_t internal_level, std::size_t& slot)
+  {
+    if (internal_level == 0 || internal_level > total_psc_levels)
+      return false;
+
+    const auto lookup_index = total_psc_levels - internal_level;
+    return psc_lookup_slot(total_psc_levels, lookup_index, slot);
+  }
+
+  void on_psc_lookup(std::size_t total_psc_levels, std::size_t lookup_index, bool hit)
+  {
+    std::size_t slot = 0;
+    if (!psc_lookup_slot(total_psc_levels, lookup_index, slot))
       return;
-    ++psc[level].lookup;
+
+    ++psc[slot].lookup;
     if (hit)
-      ++psc[level].hit;
+      ++psc[slot].hit;
   }
 
-  void on_psc_selected(std::size_t level)
+  void on_psc_selected(std::size_t total_psc_levels, std::size_t internal_level)
   {
-    if (level < psc.size())
-      ++psc[level].selected;
+    std::size_t slot = 0;
+    if (psc_internal_level_slot(total_psc_levels, internal_level, slot))
+      ++psc[slot].selected;
   }
 
-  void on_psc_fill(std::size_t level)
+  void on_psc_fill(std::size_t total_psc_levels, std::size_t internal_level)
   {
-    if (level < psc.size())
-      ++psc[level].fill;
+    std::size_t slot = 0;
+    if (psc_internal_level_slot(total_psc_levels, internal_level, slot))
+      ++psc[slot].fill;
   }
 
   void print() const
@@ -223,12 +274,12 @@ struct probe_state {
     }
 
     fmt::print("gemm_translation_probe ptw_requests: {}\n", ptw_requests);
-    for (std::size_t level = 0; level < psc.size(); ++level) {
-      if (psc[level].lookup == 0 && psc[level].fill == 0 && psc[level].selected == 0)
+    for (std::size_t slot = 0; slot < psc.size(); ++slot) {
+      if (psc[slot].lookup == 0 && psc[slot].fill == 0 && psc[slot].selected == 0)
         continue;
-      const auto hit_rate = psc[level].lookup ? static_cast<double>(psc[level].hit) / static_cast<double>(psc[level].lookup) : 0.0;
-      fmt::print("gemm_translation_probe psc level {} lookup:{} hit:{} hit_rate:{:.4f} selected:{} fill:{}\n", level, psc[level].lookup, psc[level].hit,
-                 hit_rate, psc[level].selected, psc[level].fill);
+      const auto hit_rate = psc[slot].lookup ? static_cast<double>(psc[slot].hit) / static_cast<double>(psc[slot].lookup) : 0.0;
+      fmt::print("gemm_translation_probe psc {} lookup:{} hit:{} hit_rate:{:.4f} selected:{} fill:{}\n", psc_name(slot), psc[slot].lookup, psc[slot].hit,
+                 hit_rate, psc[slot].selected, psc[slot].fill);
     }
   }
 };

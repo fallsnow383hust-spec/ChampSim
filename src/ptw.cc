@@ -61,12 +61,11 @@ auto PageTableWalker::handle_read(const request_type& handle_pkt, channel_type* 
   std::vector<std::optional<pscl_entry>> pscl_hits;
   std::transform(std::begin(pscl), std::end(pscl), std::back_inserter(pscl_hits), [walk_init](auto& x) { return x.check_hit(walk_init); });
   for (std::size_t idx = 0; idx < pscl_hits.size(); ++idx) {
-    const auto level = pscl_hits.size() - idx;
-    gemm_translation_probe::state.on_psc_lookup(level, pscl_hits[idx].has_value());
+    gemm_translation_probe::state.on_psc_lookup(pscl_hits.size(), idx, pscl_hits[idx].has_value());
   }
   walk_init =
       std::accumulate(std::begin(pscl_hits), std::end(pscl_hits), std::optional<pscl_entry>(walk_init), [](auto x, auto& y) { return y.value_or(*x); }).value();
-  gemm_translation_probe::state.on_psc_selected(walk_init.level);
+  gemm_translation_probe::state.on_psc_selected(pscl.size(), walk_init.level);
 
   champsim::address_slice walk_offset{
       champsim::dynamic_extent{champsim::data::bits{LOG2_PAGE_SIZE}, champsim::data::bits{champsim::lg2(pte_entry::byte_multiple)}},
@@ -97,7 +96,7 @@ auto PageTableWalker::handle_fill(const mshr_type& fill_mshr) -> std::optional<m
   }
 
   const auto pscl_idx = std::size(pscl) - fill_mshr.translation_level;
-  gemm_translation_probe::state.on_psc_fill(fill_mshr.translation_level);
+  gemm_translation_probe::state.on_psc_fill(pscl.size(), fill_mshr.translation_level);
   pscl.at(pscl_idx).fill({fill_mshr.v_address, *fill_mshr.data, fill_mshr.translation_level});
 
   mshr_type fwd_mshr = fill_mshr;
