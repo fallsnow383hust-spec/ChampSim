@@ -19,7 +19,7 @@ events. `loop-plain` sets phase bits to zero; `loop-context` encodes the actual
 
 1. no STLB prefetch;
 2. the new predictor with PC+role only;
-3. the same predictor/resources with PC+role+loop-boundary.
+3. the same predictor/resources with PC+role+loop-boundary v2.
 
 Results are written under `results/pim_loop_boundary_<time>/`.
 Both configurations use the paper-style 4-level translation model: 64-entry
@@ -34,6 +34,26 @@ operand role. The phase-tagged run is an information-value/upper-bound test:
 level that a hardware branch/loop detector would supply; it is not a claim
 that the architectural PIM PC changes at each boundary.
 
-Read `summary.txt` for global IPC/cycle/STLB results, per-role A/B/C coverage
-and accuracy, and the per-boundary lead-distance breakdown. Raw counters are
-in `baseline.txt`, `loop_pc_role.txt`, and `loop_boundary.txt`.
+The v2 predictor keeps one shared `(PC,role)` history instead of splitting the
+whole table by phase. It learns byte strides, but injects a request only when
+the predicted byte address is on a different 4-KiB page. Normal K progress
+requires confidence 2. Sparse loop boundaries use confidence 1 and may issue
+two causal predictions: the address
+after this boundary and the next recurrence of this boundary. A request is
+issued only when the predicted VPN differs from the current VPN. Before issue,
+the module checks the local STLB tags, MSHRs/fill queue, and its own pending
+table.
+
+`inc/cache.h` and `src/cache.cc` extend the prefetch callback with the original
+byte address and `instr_id`. The former preserves page offsets for byte-stride
+training; the latter suppresses repeated tag-check callbacks for one demand.
+A per-cycle clock then classifies every accepted prediction as timely, late, too early, or never
+demanded before the trace ends. For completed late requests, `late_by` is the
+translation fill cycle minus the first demand cycle.
+
+Read `summary.txt` for global IPC/cycle/DTLB/STLB results, A/B/C outcomes,
+local-filter counts, prediction-source results, and per-boundary cycle timing.
+Raw counters are in `baseline.txt`, `loop_pc_role.txt`, and
+`loop_boundary.txt`. The two `*.prefetch-events.csv` files contain one row per
+accepted cross-page request with issue/demand/fill cycles and its final outcome;
+`never_demanded` means no later demand appeared before this finite trace ended.

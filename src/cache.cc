@@ -265,7 +265,8 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 
   auto metadata_thru = handle_pkt.pf_metadata;
   if (should_activate_prefetcher(handle_pkt)) {
-    metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru);
+    metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.address, handle_pkt.ip, hit, useful_prefetch,
+                                                  handle_pkt.type, handle_pkt.instr_id, metadata_thru);
   }
 
   // update replacement policy
@@ -800,10 +801,10 @@ std::vector<double> CACHE::get_pq_occupancy_ratio() const { return ::occupancy_r
 
 void CACHE::impl_prefetcher_initialize() const { pref_module_pimpl->impl_prefetcher_initialize(); }
 
-uint32_t CACHE::impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
-                                              uint32_t metadata_in) const
+uint32_t CACHE::impl_prefetcher_cache_operate(champsim::address addr, champsim::address full_addr, champsim::address ip, bool cache_hit,
+                                              bool useful_prefetch, access_type type, uint64_t instr_id, uint32_t metadata_in) const
 {
-  return pref_module_pimpl->impl_prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_in);
+  return pref_module_pimpl->impl_prefetcher_cache_operate(addr, full_addr, ip, cache_hit, useful_prefetch, type, instr_id, metadata_in);
 }
 
 uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,

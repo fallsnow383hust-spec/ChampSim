@@ -37,16 +37,22 @@ run_one() {
   local binary="$1"
   local trace="$2"
   local result="$3"
-  "${binary}" --warmup-instructions 0 \
-    --simulation-instructions "${sim_instr}" "${trace}" | tee "${result}"
+  local event_log="${4:-}"
+  if [[ -n "${event_log}" ]]; then
+    GEMM_TLB_EVENT_LOG="${event_log}" "${binary}" --warmup-instructions 0 \
+      --simulation-instructions "${sim_instr}" "${trace}" | tee "${result}"
+  else
+    "${binary}" --warmup-instructions 0 \
+      --simulation-instructions "${sim_instr}" "${trace}" | tee "${result}"
+  fi
 }
 
 # The same prefetcher binary is run twice. loop_pc_role has phase bits forced
 # to zero; loop_boundary receives the actual loop-context bits. This isolates
 # the benefit of boundary context without changing predictor resources.
 run_one "${baseline_bin}" "${plain}" "${out}/baseline.txt"
-run_one "${loop_bin}" "${plain}" "${out}/loop_pc_role.txt"
-run_one "${loop_bin}" "${context}" "${out}/loop_boundary.txt"
+run_one "${loop_bin}" "${plain}" "${out}/loop_pc_role.txt" "${out}/loop_pc_role.prefetch-events.csv"
+run_one "${loop_bin}" "${context}" "${out}/loop_boundary.txt" "${out}/loop_boundary.prefetch-events.csv"
 
 python3 "${root}/gemm_tools/summarize_pim_loop_prefetch.py" \
   "${out}/baseline.txt" "${out}/loop_pc_role.txt" \
@@ -55,3 +61,5 @@ python3 "${root}/gemm_tools/summarize_pim_loop_prefetch.py" \
 echo "ChampSim instructions: ${sim_instr}"
 echo "results: ${out}"
 echo "summary: ${out}/summary.txt"
+echo "per-request timing: ${out}/loop_pc_role.prefetch-events.csv"
+echo "per-request timing: ${out}/loop_boundary.prefetch-events.csv"
