@@ -8,17 +8,13 @@ out="${2:-${root}/results/pim_loop_boundary_${stamp}}"
 mkdir -p "${out}" "${root}/traces"
 
 base="$(basename "${csv}" .csv)"
-plain="${root}/traces/${base}.loop-plain.champsimtrace.xz"
-context="${root}/traces/${base}.loop-context.champsimtrace.xz"
-plain_manifest="${plain}.json"
-context_manifest="${context}.json"
+runtime_trace="${root}/traces/${base}.loop-runtime.champsimtrace.xz"
+runtime_manifest="${runtime_trace}.json"
 
 python3 "${root}/gemm_tools/pim_loop_csv_to_champsim_trace.py" \
-  "${csv}" "${plain}" --manifest "${plain_manifest}" --no-phase-context
-python3 "${root}/gemm_tools/pim_loop_csv_to_champsim_trace.py" \
-  "${csv}" "${context}" --manifest "${context_manifest}"
+  "${csv}" "${runtime_trace}" --manifest "${runtime_manifest}" --no-phase-context
 
-sim_instr="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["simulation_instructions"])' "${plain_manifest}")"
+sim_instr="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["simulation_instructions"])' "${runtime_manifest}")"
 
 build_one() {
   local config="$1"
@@ -47,12 +43,13 @@ run_one() {
   fi
 }
 
-# The same prefetcher binary is run twice. loop_pc_role has phase bits forced
-# to zero; loop_boundary receives the actual loop-context bits. This isolates
-# the benefit of boundary context without changing predictor resources.
-run_one "${baseline_bin}" "${plain}" "${out}/baseline.txt"
-run_one "${loop_bin}" "${plain}" "${out}/loop_pc_role.txt" "${out}/loop_pc_role.prefetch-events.csv"
-run_one "${loop_bin}" "${context}" "${out}/loop_boundary.txt" "${out}/loop_boundary.prefetch-events.csv"
+# Both predictor runs consume exactly the same PCs, addresses, and branches.
+# The first disables the runtime backedge detector; the second enables it.
+run_one "${baseline_bin}" "${runtime_trace}" "${out}/baseline.txt"
+GEMM_RUNTIME_LOOP_CONTEXT=0 run_one "${loop_bin}" "${runtime_trace}" "${out}/loop_pc_role.txt" \
+  "${out}/loop_pc_role.prefetch-events.csv"
+GEMM_RUNTIME_LOOP_CONTEXT=1 run_one "${loop_bin}" "${runtime_trace}" "${out}/loop_boundary.txt" \
+  "${out}/loop_boundary.prefetch-events.csv"
 
 python3 "${root}/gemm_tools/summarize_pim_loop_prefetch.py" \
   "${out}/baseline.txt" "${out}/loop_pc_role.txt" \

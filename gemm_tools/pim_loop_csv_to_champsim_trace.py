@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Convert canonical PIM-loop CSV into role- and boundary-aware ChampSim trace.
 
-Each PIM32 record becomes A-load, B-load, and C-store instructions. Optional
-conditional branch records reproduce the loop latches that executed before the
-current PIM instruction. The synthetic memory IP encodes:
+Each PIM32 record becomes A-load, B-load, and C-store instructions. Conditional
+branch records reproduce the loop latches that executed before the current PIM
+instruction. The synthetic memory IP encodes only:
 
-    [static PIM site][3-bit loop phase][2-bit operand role]
+    [static PIM site][2-bit operand role]
 
-The phase field is a proxy for branch-history/loop-context input to the STLB
-prefetcher; it is not a claim that the architectural PIM PC changes by phase.
+The STLB predictor must recover loop context causally from the dynamic backedge
+stream. GEMM coordinates and phase labels are used only to reconstruct those
+branch outcomes; they are never encoded in a memory PC.
 """
 
 from __future__ import annotations
@@ -134,9 +135,7 @@ def convert_rows(
 
         raw_site = parse_int(row[args.pc_column])
         site_id = sites.setdefault(raw_site, len(sites))
-        phase_code = 0 if args.no_phase_context else PHASES[phase]
         ip_base = args.base_pc + (site_id << CONTEXT_BITS)
-        ip_base |= phase_code << ROLE_BITS
 
         a_addr = parse_int(row[args.a_column])
         b_addr = parse_int(row[args.b_column])
@@ -161,7 +160,8 @@ def convert_rows(
         "branch_instructions": branch_instructions,
         "simulation_instructions": memory_instructions + branch_instructions,
         "static_pim_sites": len(sites),
-        "phase_context_encoded": not args.no_phase_context,
+        "phase_context_encoded": False,
+        "runtime_backedge_context": args.emit_branches,
         "branches_emitted": args.emit_branches,
         "phase_counts": phase_counts,
     }
@@ -210,7 +210,7 @@ def main() -> int:
         {
             "input": str(args.csv_trace),
             "output": str(args.output_trace),
-            "ip_encoding": "[pim_site][phase:3][role:2]",
+            "ip_encoding": "[pim_site][role:2]",
             "roles": {"A": 0, "B": 1, "C": 2},
             "phases": PHASES,
             "branch_levels": list(LOOP_LEVELS),

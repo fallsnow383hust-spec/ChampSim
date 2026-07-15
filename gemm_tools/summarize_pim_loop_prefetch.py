@@ -10,12 +10,12 @@ from pathlib import Path
 
 
 PHASE_LINE = re.compile(
-    r"^loop_boundary_tlb_realfill_v2 phase (?P<phase>\S+) "
+    r"^loop_boundary_tlb_realfill_v3 phase (?P<phase>\S+) "
     r"role (?P<role>[ABC]) (?P<counters>.*)$",
     re.MULTILINE,
 )
 PATTERN_LINE = re.compile(
-    r"^loop_boundary_tlb_realfill_v2 pattern (?P<pattern>\S+) "
+    r"^loop_boundary_tlb_realfill_v3 pattern (?P<pattern>\S+) "
     r"(?P<counters>.*)$",
     re.MULTILINE,
 )
@@ -188,7 +188,7 @@ def main() -> None:
     rows = [
         ("baseline", parse(args.baseline)),
         ("pc_role_same_engine", parse(args.pc_role)),
-        ("loop_boundary_v2", parse(args.loop_boundary)),
+        ("loop_boundary_runtime", parse(args.loop_boundary)),
     ]
     lines = [
         "PIM five-loop STLB prefetch comparison",

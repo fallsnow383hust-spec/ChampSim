@@ -7,6 +7,7 @@
 #include <fmt/core.h>
 
 #include "cache.h"
+#include "gemm_runtime_loop_context.h"
 
 namespace
 {
@@ -28,12 +29,10 @@ double average(uint64_t sum, uint64_t count) { return count == 0 ? 0.0 : static_
 
 uint8_t loop_boundary_tlb_realfill::role_from_ip(champsim::address ip) { return static_cast<uint8_t>(as_u64(ip) & 0x3ULL); }
 
-uint8_t loop_boundary_tlb_realfill::phase_from_ip(champsim::address ip) { return static_cast<uint8_t>((as_u64(ip) >> 2) & 0x7ULL); }
-
 uint64_t loop_boundary_tlb_realfill::base_key_from_ip(champsim::address ip)
 {
-  // Keep the operand role but remove the three trace-provided loop-context bits.
-  return as_u64(ip) & ~0x1cULL;
+  // Runtime-loop traces contain only the static PIM site and operand role.
+  return as_u64(ip);
 }
 
 uint64_t loop_boundary_tlb_realfill::vpn_from_address(champsim::address addr) { return as_u64(champsim::page_number{addr}); }
@@ -47,7 +46,7 @@ std::string_view loop_boundary_tlb_realfill::role_name(uint8_t role)
 std::string_view loop_boundary_tlb_realfill::phase_name(uint8_t phase)
 {
   constexpr std::array<std::string_view, PHASE_COUNT> names{
-      "START", "K_PROGRESS", "K_TO_IR", "IR_TO_JR", "JR_TO_IC", "IC_TO_PC", "PC_TO_JC"};
+      "NO_BACKEDGE", "BACKEDGE_1", "BACKEDGE_2", "BACKEDGE_3", "BACKEDGE_4", "BACKEDGE_5", "BACKEDGE_6"};
   return phase < names.size() ? names[phase] : "unknown";
 }
 
@@ -194,7 +193,11 @@ void loop_boundary_tlb_realfill::prefetcher_initialize()
   prediction_seq = 0;
   ignored_non_pim = 0;
   duplicate_callback = 0;
+  missing_runtime_context = 0;
   finalized = false;
+  const auto* runtime_setting = std::getenv("GEMM_RUNTIME_LOOP_CONTEXT");
+  runtime_context_enabled = runtime_setting == nullptr || std::string_view{runtime_setting} != "0";
+  gemm_runtime_loop_context::state.reset();
   if (event_log.is_open())
     event_log.close();
   if (const auto* path = std::getenv("GEMM_TLB_EVENT_LOG"); path != nullptr && *path != '\0') {
@@ -219,7 +222,15 @@ uint32_t loop_boundary_tlb_realfill::prefetcher_cache_operate(champsim::address 
     return metadata_in;
   }
   const auto role = role_from_ip(ip);
-  const auto phase = phase_from_ip(ip);
+  uint8_t phase = 0;
+  if (runtime_context_enabled) {
+    const auto context = gemm_runtime_loop_context::state.context_for(instr_id);
+    if (!context.has_value()) {
+      ++missing_runtime_context;
+    } else {
+      phase = *context;
+    }
+  }
   if (role >= ROLE_COUNT || phase >= PHASE_COUNT)
     return metadata_in;
 
@@ -276,7 +287,7 @@ uint32_t loop_boundary_tlb_realfill::prefetcher_cache_operate(champsim::address 
   entry.last_address = raw_address;
   entry.last_phase = phase;
 
-  if (phase >= 2) {
+  if (phase > 0) {
     bool has_boundary_candidate = false;
     const auto& post = entry.post_boundary[phase];
     if (post.valid && post.confidence >= BOUNDARY_CONFIDENCE) {
@@ -371,14 +382,22 @@ void loop_boundary_tlb_realfill::finalize_unresolved()
 void loop_boundary_tlb_realfill::prefetcher_final_stats()
 {
   finalize_unresolved();
-  fmt::print("loop_boundary_tlb_realfill_v2 ignored_non_pim:{} duplicate_callback:{} outstanding:{} cycles:{}\n", ignored_non_pim,
-             duplicate_callback, pending.size(), current_cycle);
+  fmt::print(
+      "loop_boundary_tlb_realfill_v3 runtime_context:{} ignored_non_pim:{} duplicate_callback:{} missing_context:{} outstanding:{} cycles:{} "
+      "predicted_backedges:{} actual_backedges:{} correct_backedges:{} missed_backedges:{} false_backedges:{} context_overflow:{}\n",
+      runtime_context_enabled, ignored_non_pim, duplicate_callback, missing_runtime_context, pending.size(), current_cycle,
+      gemm_runtime_loop_context::state.predicted_backedges, gemm_runtime_loop_context::state.actual_backedges,
+      gemm_runtime_loop_context::state.correctly_predicted_backedges, gemm_runtime_loop_context::state.missed_backedges,
+      gemm_runtime_loop_context::state.false_backedges, gemm_runtime_loop_context::state.context_overflow);
+  for (uint8_t context = 1; context < gemm_runtime_loop_context::state.next_context; ++context)
+    fmt::print("loop_boundary_tlb_realfill_v3 context {} branch_pc:0x{:x}\n", phase_name(context),
+               gemm_runtime_loop_context::state.context_branch_pc[context]);
 
   for (uint8_t index = 0; index < PATTERN_COUNT; ++index) {
     const auto pattern = static_cast<pattern_kind>(index);
     const auto& value = pattern_stats[index];
     fmt::print(
-        "loop_boundary_tlb_realfill_v2 pattern {} candidate:{} cross_page:{} same_page:{} resident_filter:{} inflight_filter:{} pending_filter:{} "
+        "loop_boundary_tlb_realfill_v3 pattern {} candidate:{} cross_page:{} same_page:{} resident_filter:{} inflight_filter:{} pending_filter:{} "
         "issued:{} rejected:{} demanded:{} timely:{} late:{} late_completed:{} nonuseful_hit:{} too_early:{} never:{} unresolved_late:{} "
         "issue_to_demand_avg:{:.2f} issue_to_demand_max:{} ready_lead_avg:{:.2f} ready_lead_max:{} late_by_avg:{:.2f} late_by_max:{}\n",
         pattern_name(pattern), value.candidates, value.cross_page, value.candidates - value.cross_page, value.filtered_resident,
@@ -394,7 +413,7 @@ void loop_boundary_tlb_realfill::prefetcher_final_stats()
       if (value.demand_access == 0 && value.candidates == 0 && value.issued == 0)
         continue;
       fmt::print(
-          "loop_boundary_tlb_realfill_v2 phase {} role {} access:{} miss:{} useful_callback:{} candidate:{} cross_page:{} same_page:{} "
+          "loop_boundary_tlb_realfill_v3 phase {} role {} access:{} miss:{} useful_callback:{} candidate:{} cross_page:{} same_page:{} "
           "resident_filter:{} inflight_filter:{} pending_filter:{} issued:{} rejected:{} demanded:{} timely:{} late:{} late_completed:{} "
           "nonuseful_hit:{} too_early:{} never:{} unresolved_late:{} issue_to_demand_avg:{:.2f} issue_to_demand_max:{} "
           "ready_lead_avg:{:.2f} ready_lead_max:{} late_by_avg:{:.2f} late_by_max:{}\n",

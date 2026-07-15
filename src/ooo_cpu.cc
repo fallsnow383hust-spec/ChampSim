@@ -29,6 +29,7 @@
 #include "deadlock.h"
 #include "event_listeners.h"
 #include "instruction.h"
+#include "gemm_runtime_loop_context.h"
 #include "util/span.h"
 
 long O3_CPU::operate()
@@ -148,6 +149,13 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
     // call code prefetcher every time the branch predictor is used
     l1i->impl_prefetcher_branch_operate(arch_instr.ip, arch_instr.branch, predicted_branch_target);
 
+    // A hardware loop detector can identify a predicted taken backedge at
+    // fetch/decode time. Stamp that runtime context onto following PIM uops;
+    // the STLB later recovers it by dynamic instruction id despite OoO issue.
+    gemm_runtime_loop_context::state.observe_branch(
+        arch_instr.ip.to<uint64_t>(), arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>(), arch_instr.branch_taken,
+        arch_instr.branch_target.to<uint64_t>());
+
     if (predicted_branch_target != arch_instr.branch_target
         || (((arch_instr.branch == BRANCH_CONDITIONAL) || (arch_instr.branch == BRANCH_OTHER))
             && arch_instr.branch_taken != arch_instr.branch_prediction)) { // conditional branches are re-evaluated at decode when the target is computed
@@ -171,6 +179,7 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
 
 bool O3_CPU::do_init_instruction(ooo_model_instr& arch_instr)
 {
+  gemm_runtime_loop_context::state.stamp_instruction(arch_instr.instr_id, arch_instr.ip.to<uint64_t>());
   // fast warmup eliminates register dependencies between instructions branch predictor, cache contents, and prefetchers are still warmed up
   if (warmup) {
     arch_instr.source_registers.clear();

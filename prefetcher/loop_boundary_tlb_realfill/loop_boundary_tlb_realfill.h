@@ -98,12 +98,13 @@ struct loop_boundary_tlb_realfill : public champsim::modules::prefetcher {
   uint64_t prediction_seq = 0;
   uint64_t ignored_non_pim = 0;
   uint64_t duplicate_callback = 0;
+  uint64_t missing_runtime_context = 0;
+  bool runtime_context_enabled = true;
   bool finalized = false;
 
   explicit loop_boundary_tlb_realfill(CACHE* cache) : champsim::modules::prefetcher(cache) {}
 
   static uint8_t role_from_ip(champsim::address ip);
-  static uint8_t phase_from_ip(champsim::address ip);
   static uint64_t base_key_from_ip(champsim::address ip);
   static uint64_t vpn_from_address(champsim::address addr);
   static std::string_view role_name(uint8_t role);
