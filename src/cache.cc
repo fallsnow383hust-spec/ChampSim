@@ -255,7 +255,9 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   const auto hit = (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
   if (handle_pkt.type == access_type::LOAD || handle_pkt.type == access_type::WRITE || handle_pkt.type == access_type::RFO)
-    gemm_translation_probe::state.on_tlb_access(NAME, handle_pkt.ip.to<uint64_t>(), hit);
+    gemm_translation_probe::state.on_tlb_access(
+        NAME, handle_pkt.instr_id, handle_pkt.ip.to<uint64_t>(), handle_pkt.address.to<uint64_t>(),
+        static_cast<uint64_t>(current_time.time_since_epoch() / clock_period), hit);
 
   if constexpr (champsim::debug_print) {
     fmt::print("[{}] {} instr_id: {} address: {} v_address: {} data: {} set: {} way: {} ({}) type: {} cycle: {}\n", NAME, __func__, handle_pkt.instr_id,
@@ -642,7 +644,8 @@ void CACHE::finish_translation(const response_type& packet)
     entry.is_translated = true;                                                                          // This entry is now translated
     if (gemm_translation_probe::should_probe_cache(this->NAME)) {
       const auto cycle = static_cast<uint64_t>(this->current_time.time_since_epoch() / this->clock_period);
-      gemm_translation_probe::state.on_l1d_translation_done(entry.instr_id, entry.ip.template to<uint64_t>(), cycle);
+      gemm_translation_probe::state.on_l1d_translation_done(
+          entry.instr_id, entry.ip.template to<uint64_t>(), entry.v_address.template to<uint64_t>(), cycle);
     }
 
     if constexpr (champsim::debug_print) {
@@ -685,7 +688,7 @@ void CACHE::issue_translation(tag_lookup_type& q_entry) const
     q_entry.translate_issued = lower_translate->add_rq(fwd_pkt);
     if (q_entry.translate_issued && gemm_translation_probe::should_probe_cache(this->NAME)) {
       const auto cycle = static_cast<uint64_t>(this->current_time.time_since_epoch() / this->clock_period);
-      gemm_translation_probe::state.on_l1d_translation_start(q_entry.instr_id, cycle);
+      gemm_translation_probe::state.on_l1d_translation_start(q_entry.instr_id, q_entry.v_address.to<uint64_t>(), cycle);
     }
     if constexpr (champsim::debug_print) {
       if (q_entry.translate_issued) {

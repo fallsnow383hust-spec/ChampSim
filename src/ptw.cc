@@ -56,16 +56,20 @@ PageTableWalker::mshr_type::mshr_type(const request_type& req, std::size_t level
 
 auto PageTableWalker::handle_read(const request_type& handle_pkt, channel_type* ul) -> std::optional<mshr_type>
 {
-  gemm_translation_probe::state.on_ptw_request();
+  gemm_translation_probe::state.on_ptw_request(handle_pkt.instr_id, handle_pkt.ip.to<uint64_t>());
   pscl_entry walk_init = {handle_pkt.v_address, CR3_addr, std::size(pscl)};
   std::vector<std::optional<pscl_entry>> pscl_hits;
   std::transform(std::begin(pscl), std::end(pscl), std::back_inserter(pscl_hits), [walk_init](auto& x) { return x.check_hit(walk_init); });
+  const auto selected_from_psc = std::any_of(
+      std::begin(pscl_hits), std::end(pscl_hits), [](const auto& entry) { return entry.has_value(); });
   for (std::size_t idx = 0; idx < pscl_hits.size(); ++idx) {
-    gemm_translation_probe::state.on_psc_lookup(pscl_hits.size(), idx, pscl_hits[idx].has_value());
+    gemm_translation_probe::state.on_psc_lookup(
+        pscl_hits.size(), idx, pscl_hits[idx].has_value(), handle_pkt.instr_id, handle_pkt.ip.to<uint64_t>());
   }
   walk_init =
       std::accumulate(std::begin(pscl_hits), std::end(pscl_hits), std::optional<pscl_entry>(walk_init), [](auto x, auto& y) { return y.value_or(*x); }).value();
-  gemm_translation_probe::state.on_psc_selected(pscl.size(), walk_init.level);
+  gemm_translation_probe::state.on_psc_selected(
+      pscl.size(), walk_init.level, selected_from_psc, handle_pkt.instr_id, handle_pkt.ip.to<uint64_t>());
 
   champsim::address_slice walk_offset{
       champsim::dynamic_extent{champsim::data::bits{LOG2_PAGE_SIZE}, champsim::data::bits{champsim::lg2(pte_entry::byte_multiple)}},

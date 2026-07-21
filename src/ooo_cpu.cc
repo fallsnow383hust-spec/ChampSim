@@ -28,6 +28,7 @@
 #include "champsim.h"
 #include "deadlock.h"
 #include "event_listeners.h"
+#include "gemm_translation_probe.h"
 #include "instruction.h"
 #include "gemm_runtime_loop_context.h"
 #include "util/span.h"
@@ -179,6 +180,7 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
 
 bool O3_CPU::do_init_instruction(ooo_model_instr& arch_instr)
 {
+  gemm_translation_probe::state.on_instruction(arch_instr.instr_id, arch_instr.ip.to<uint64_t>());
   gemm_runtime_loop_context::state.stamp_instruction(arch_instr.instr_id, arch_instr.ip.to<uint64_t>());
   // fast warmup eliminates register dependencies between instructions branch predictor, cache contents, and prefetchers are still warmed up
   if (warmup) {
