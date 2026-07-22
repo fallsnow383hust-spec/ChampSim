@@ -15,7 +15,7 @@
 struct pc_role_tlb_stride_realfill : public champsim::modules::prefetcher {
   struct tracker_entry {
     uint64_t tag = 0;
-    uint64_t last_vpn = 0;
+    uint64_t last_address = 0;
     int64_t last_stride = 0;
     int confidence = 0;
     bool valid = false;
@@ -34,6 +34,8 @@ struct pc_role_tlb_stride_realfill : public champsim::modules::prefetcher {
     uint64_t issued_shadow = 0;
     uint64_t issued_real = 0;
     uint64_t real_rejected = 0;
+    uint64_t same_page_filtered = 0;
+    uint64_t duplicate_callback = 0;
     uint64_t shadow_useful_on_miss = 0;
     uint64_t shadow_timely_on_hit = 0;
     uint64_t shadow_evictions = 0;
@@ -56,6 +58,7 @@ struct pc_role_tlb_stride_realfill : public champsim::modules::prefetcher {
   std::array<tracker_entry, TRACKER_ENTRIES> table{};
   std::deque<uint64_t> shadow_fifo{};
   std::unordered_map<uint64_t, pending_prefetch> shadow_buffer{};
+  std::unordered_set<uint64_t> observed_requests{};
   std::array<role_stats, ROLE_COUNT> per_role{};
 
   uint64_t demand_seq = 0;
@@ -64,6 +67,8 @@ struct pc_role_tlb_stride_realfill : public champsim::modules::prefetcher {
   uint64_t issued_shadow = 0;
   uint64_t issued_real = 0;
   uint64_t real_rejected = 0;
+  uint64_t same_page_filtered = 0;
+  uint64_t duplicate_callback = 0;
   uint64_t shadow_useful_on_miss = 0;
   uint64_t shadow_redundant_on_hit = 0;
   uint64_t shadow_evictions = 0;
@@ -77,8 +82,8 @@ struct pc_role_tlb_stride_realfill : public champsim::modules::prefetcher {
   void record_timeliness(uint8_t role, uint64_t distance);
   void record_real_timeliness(uint8_t role, uint64_t distance);
 
-  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
-                                    uint32_t metadata_in);
+  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address full_addr, champsim::address ip, uint8_t cache_hit,
+                                    bool useful_prefetch, access_type type, uint64_t instr_id, uint32_t metadata_in);
   uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in);
   void prefetcher_initialize();
   void prefetcher_final_stats();

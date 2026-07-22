@@ -1,6 +1,7 @@
 #include "pc_role_tlb_stride_realfill.h"
 
 #include <algorithm>
+#include <limits>
 
 #include <fmt/core.h>
 
@@ -76,16 +77,20 @@ void pc_role_tlb_stride_realfill::prefetcher_initialize()
   issued_shadow = 0;
   issued_real = 0;
   real_rejected = 0;
+  same_page_filtered = 0;
+  duplicate_callback = 0;
   shadow_useful_on_miss = 0;
   shadow_redundant_on_hit = 0;
   shadow_evictions = 0;
   champ_prefetch_useful_callback = 0;
   shadow_fifo.clear();
   shadow_buffer.clear();
+  observed_requests.clear();
 }
 
-uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch,
-                                                               access_type type, uint32_t metadata_in)
+uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address addr, champsim::address full_addr, champsim::address ip,
+                                                               uint8_t cache_hit, bool useful_prefetch, access_type type, uint64_t instr_id,
+                                                               uint32_t metadata_in)
 {
   if (useful_prefetch)
     ++champ_prefetch_useful_callback;
@@ -94,9 +99,16 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
   if (!is_demand_translation)
     return metadata_in;
 
-  ++demand_seq;
   const auto role = role_from_ip(ip);
   auto& role_stat = per_role[role];
+  const auto request_key = (instr_id << 2) | role;
+  if (!observed_requests.insert(request_key).second) {
+    ++duplicate_callback;
+    ++role_stat.duplicate_callback;
+    return metadata_in;
+  }
+
+  ++demand_seq;
   ++role_stat.demand_access;
 
   if (!cache_hit)
@@ -105,6 +117,7 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
   if (useful_prefetch)
     ++role_stat.champ_prefetch_useful_callback;
 
+  const auto raw_address = as_u64(full_addr);
   const auto vpn = as_u64(champsim::page_number{addr});
   // Bits [3:2] carry dynamic fused-group START/END markers in the page-stream
   // trace. They describe the same static PIM PC and must not split training.
@@ -131,22 +144,19 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
     shadow_buffer.erase(pending_it);
   }
 
-  // Train only on misses in the attached TLB level. With the real-fill config,
-  // this module is attached to STLB, so this means STLB misses.
-  if (cache_hit)
-    return metadata_in;
-
+  // Train on every unique instruction-carried base address. Whether the
+  // current translation hit in STLB must not remove it from the byte stream.
   const auto idx = key % TRACKER_ENTRIES;
   auto& entry = table[idx];
 
   if (!entry.valid || entry.tag != key) {
-    entry = tracker_entry{key, vpn, 0, 0, true};
+    entry = tracker_entry{key, raw_address, 0, 0, true};
     ++trained;
     ++role_stat.trained;
     return metadata_in;
   }
 
-  const auto stride = static_cast<int64_t>(vpn) - static_cast<int64_t>(entry.last_vpn);
+  const auto stride = static_cast<int64_t>(raw_address) - static_cast<int64_t>(entry.last_address);
   if (stride != 0 && stride == entry.last_stride)
     ++entry.confidence;
   else {
@@ -154,7 +164,7 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
     entry.confidence = (stride != 0) ? 1 : 0;
   }
 
-  entry.last_vpn = vpn;
+  entry.last_address = raw_address;
   ++trained;
   ++role_stat.trained;
 
@@ -162,11 +172,23 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
     return metadata_in;
 
   for (int degree = 1; degree <= PREFETCH_DEGREE; ++degree) {
-    const auto pred_vpn = static_cast<int64_t>(vpn) + stride * degree;
-    if (pred_vpn < 0)
+    if (raw_address > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+      continue;
+    const auto signed_current = static_cast<int64_t>(raw_address);
+    const auto byte_delta = stride * degree;
+    if ((byte_delta > 0 && signed_current > std::numeric_limits<int64_t>::max() - byte_delta)
+        || (byte_delta < 0 && signed_current < -byte_delta))
+      continue;
+    const auto predicted_address = signed_current + byte_delta;
+    if (predicted_address < 0)
       continue;
 
-    const auto pred_vpn_u64 = static_cast<uint64_t>(pred_vpn);
+    const auto pred_vpn_u64 = static_cast<uint64_t>(predicted_address) >> LOG2_PAGE_SIZE;
+    if (pred_vpn_u64 == vpn) {
+      ++same_page_filtered;
+      ++role_stat.same_page_filtered;
+      continue;
+    }
     const auto pred_addr = champsim::address{pred_vpn_u64 << LOG2_PAGE_SIZE};
     ++predictions;
     ++role_stat.predictions;
@@ -213,6 +235,8 @@ void pc_role_tlb_stride_realfill::prefetcher_final_stats()
   fmt::print("pc_role_tlb_stride_realfill issued_shadow: {}\n", issued_shadow);
   fmt::print("pc_role_tlb_stride_realfill issued_real: {}\n", issued_real);
   fmt::print("pc_role_tlb_stride_realfill real_rejected: {}\n", real_rejected);
+  fmt::print("pc_role_tlb_stride_realfill same_page_filtered: {}\n", same_page_filtered);
+  fmt::print("pc_role_tlb_stride_realfill duplicate_callback: {}\n", duplicate_callback);
   fmt::print("pc_role_tlb_stride_realfill useful_shadow_on_tlb_miss: {}\n", shadow_useful_on_miss);
   fmt::print("pc_role_tlb_stride_realfill redundant_shadow_on_tlb_hit: {}\n", shadow_redundant_on_hit);
   fmt::print("pc_role_tlb_stride_realfill shadow_evictions: {}\n", shadow_evictions);
@@ -230,6 +254,8 @@ void pc_role_tlb_stride_realfill::prefetcher_final_stats()
     fmt::print("pc_role_tlb_stride_realfill role {} issued_shadow: {}\n", role_name(role), stats.issued_shadow);
     fmt::print("pc_role_tlb_stride_realfill role {} issued_real: {}\n", role_name(role), stats.issued_real);
     fmt::print("pc_role_tlb_stride_realfill role {} real_rejected: {}\n", role_name(role), stats.real_rejected);
+    fmt::print("pc_role_tlb_stride_realfill role {} same_page_filtered: {}\n", role_name(role), stats.same_page_filtered);
+    fmt::print("pc_role_tlb_stride_realfill role {} duplicate_callback: {}\n", role_name(role), stats.duplicate_callback);
     fmt::print("pc_role_tlb_stride_realfill role {} shadow_timely_on_hit: {}\n", role_name(role), stats.shadow_timely_on_hit);
     fmt::print("pc_role_tlb_stride_realfill role {} shadow_useful_on_miss: {}\n", role_name(role), stats.shadow_useful_on_miss);
     fmt::print("pc_role_tlb_stride_realfill role {} shadow_evictions: {}\n", role_name(role), stats.shadow_evictions);
