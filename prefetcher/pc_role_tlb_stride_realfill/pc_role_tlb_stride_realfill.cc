@@ -106,7 +106,9 @@ uint32_t pc_role_tlb_stride_realfill::prefetcher_cache_operate(champsim::address
     ++role_stat.champ_prefetch_useful_callback;
 
   const auto vpn = as_u64(champsim::page_number{addr});
-  const auto key = as_u64(ip);
+  // Bits [3:2] carry dynamic fused-group START/END markers in the page-stream
+  // trace. They describe the same static PIM PC and must not split training.
+  const auto key = as_u64(ip) & ~0xcULL;
 
   const auto pending_it = shadow_buffer.find(vpn);
   if (pending_it != shadow_buffer.end()) {

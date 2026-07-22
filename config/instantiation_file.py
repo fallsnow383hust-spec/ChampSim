@@ -99,6 +99,7 @@ ptw_builder_parts = {
     'mshr_size': '.mshr_size({mshr_size})',
     'max_read': '.tag_bandwidth(champsim::bandwidth::maximum_type{{{max_read}}})',
     'max_write': '.fill_bandwidth(champsim::bandwidth::maximum_type{{{max_write}}})',
+    'latency': '.latency({latency})',
     'frequency': '.clock_period(champsim::chrono::picoseconds{{{^clock_period}}})'
 }
 
