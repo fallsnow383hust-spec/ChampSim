@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 csv="${1:?usage: bash gemm_tools/run_pim_loop_prefetch_eval.sh TRACE.csv [OUT_DIR]}"
 stamp="$(date +%Y%m%d-%H%M%S)"
-out="${2:-${root}/results/pim_loop_boundary_${stamp}}"
+out="${2:-${root}/results/pim_g_lbtp_${stamp}}"
 mkdir -p "${out}" "${root}/traces"
 
 base="$(basename "${csv}" .csv)"
@@ -25,9 +25,9 @@ build_one() {
 }
 
 baseline_bin="${root}/bin/champsim-pim-loop-baseline"
-loop_bin="${root}/bin/champsim-pim-loop-boundary"
+graph_bin="${root}/bin/champsim-pim-g-lbtp"
 build_one "${root}/gemm_configs/stlb_pim_loop_baseline.json" "${baseline_bin}"
-build_one "${root}/gemm_configs/stlb_loop_boundary_tlb_realfill.json" "${loop_bin}"
+build_one "${root}/gemm_configs/stlb_g_lbtp.json" "${graph_bin}"
 
 run_one() {
   local binary="$1"
@@ -44,19 +44,20 @@ run_one() {
 }
 
 # Both predictor runs consume exactly the same PCs, addresses, and branches.
-# The first disables the runtime backedge detector; the second enables it.
+# The first collapses the graph onto the PC+role stream node; the second enables
+# dynamically detected loop-PC vertices and weighted byte-delta edges.
 run_one "${baseline_bin}" "${runtime_trace}" "${out}/baseline.txt"
-GEMM_RUNTIME_LOOP_CONTEXT=0 run_one "${loop_bin}" "${runtime_trace}" "${out}/loop_pc_role.txt" \
-  "${out}/loop_pc_role.prefetch-events.csv"
-GEMM_RUNTIME_LOOP_CONTEXT=1 run_one "${loop_bin}" "${runtime_trace}" "${out}/loop_boundary.txt" \
-  "${out}/loop_boundary.prefetch-events.csv"
+GEMM_RUNTIME_LOOP_CONTEXT=0 run_one "${graph_bin}" "${runtime_trace}" "${out}/g_lbtp_pc_role.txt" \
+  "${out}/g_lbtp_pc_role.prefetch-events.csv"
+GEMM_RUNTIME_LOOP_CONTEXT=1 run_one "${graph_bin}" "${runtime_trace}" "${out}/g_lbtp_graph.txt" \
+  "${out}/g_lbtp_graph.prefetch-events.csv"
 
 python3 "${root}/gemm_tools/summarize_pim_loop_prefetch.py" \
-  "${out}/baseline.txt" "${out}/loop_pc_role.txt" \
-  "${out}/loop_boundary.txt" --output "${out}/summary.txt"
+  "${out}/baseline.txt" "${out}/g_lbtp_pc_role.txt" \
+  "${out}/g_lbtp_graph.txt" --output "${out}/summary.txt"
 
 echo "ChampSim instructions: ${sim_instr}"
 echo "results: ${out}"
 echo "summary: ${out}/summary.txt"
-echo "per-request timing: ${out}/loop_pc_role.prefetch-events.csv"
-echo "per-request timing: ${out}/loop_boundary.prefetch-events.csv"
+echo "per-request timing: ${out}/g_lbtp_pc_role.prefetch-events.csv"
+echo "per-boundary timing: ${out}/g_lbtp_graph.prefetch-events.csv"

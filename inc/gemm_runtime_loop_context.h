@@ -8,6 +8,9 @@
 
 namespace gemm_runtime_loop_context
 {
+using predicted_backedge_observer_type = void (*)(uint8_t);
+inline predicted_backedge_observer_type predicted_backedge_observer = nullptr;
+
 // Single-core experiment sideband. It models a small hardware loop detector:
 // a predicted taken backward branch allocates a runtime context id, and the id
 // is stamped onto following PIM uops by dynamic instruction id. No GEMM loop
@@ -65,6 +68,8 @@ struct runtime_state {
     const auto found = branch_context.find(branch_pc);
     if (found != branch_context.end()) {
       current_context = found->second;
+      if (predicted_backedge_observer != nullptr)
+        predicted_backedge_observer(current_context);
       return;
     }
     if (next_context > MAX_CONTEXTS) {
@@ -75,6 +80,8 @@ struct runtime_state {
     current_context = next_context++;
     branch_context.emplace(branch_pc, current_context);
     context_branch_pc[current_context] = branch_pc;
+    if (predicted_backedge_observer != nullptr)
+      predicted_backedge_observer(current_context);
   }
 
   void stamp_instruction(uint64_t instr_id, uint64_t ip)
