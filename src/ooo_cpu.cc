@@ -710,6 +710,7 @@ long O3_CPU::retire_rob()
   // commit register writes to backend RAT
   // and recycle the old physical registers
   for (auto rob_it = retire_begin; rob_it != retire_end; ++rob_it) {
+    gemm_runtime_loop_context::state.retire_instruction(rob_it->instr_id, rob_it->ip.to<uint64_t>());
     for (auto dreg : rob_it->destination_registers) {
       reg_allocator.retire_dest_register(dreg);
     }

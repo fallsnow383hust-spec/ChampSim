@@ -18,9 +18,10 @@ descriptor stream (equivalent to a `PIMCFG` sideband):
 No loop coordinate is supplied to the prefetcher. Synthetic loop branches are
 observed by the existing runtime loop detector and mapped to six small loop
 contexts. The first A-page uop of every descriptor carries a reserved
-`PIMCFG-start` bit in its synthetic trace PC. The CPU frontend observes this
-bit in program order and notifies RPRG; therefore out-of-order
-TLB requests cannot desynchronize the descriptor stream. This bit carries no
+`PIMCFG-start` bit in its synthetic trace PC. The frontend stamps its loop
+context, while in-order ROB retirement notifies RPRG only for non-squashed
+instructions. Therefore speculative refetch and out-of-order TLB requests
+cannot desynchronize the descriptor stream. This bit carries no
 loop coordinate and no dynamic address—the actual descriptor fields still
 come from the architectural sideband. The descriptor CSV must be the same CSV
 used to generate the binary trace.
@@ -28,7 +29,7 @@ used to generate the binary trace.
 ## Data path
 
 1. **Descriptor observer** consumes exactly one descriptor when the marked
-   first A-page uop reaches the frontend.
+   first A-page uop retires from the ROB.
 2. **RPRG** stores four weighted transitions per set. An edge is
    `(site, source-loop-context) -> (target-context, delta A/B/C, next shape)`.
    Confidence, frequency, usefulness, and LRU jointly select an edge.

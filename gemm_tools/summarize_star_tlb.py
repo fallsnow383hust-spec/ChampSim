@@ -150,7 +150,7 @@ def main() -> int:
         lines += [
             "",
             "role issued demanded timely late redundant too_early never "
-            "timely% coverage%",
+            "timely/issued timely/demanded demand_coverage",
         ]
         for role in "ABC":
             row = star["roles"].get(role, {})
@@ -164,7 +164,8 @@ def main() -> int:
                 f"{integer(row, 'redundant'):<10}"
                 f"{integer(row, 'too_early'):<10}"
                 f"{integer(row, 'never'):<6}"
-                f"{pct(timely, demanded):<8}"
+                f"{pct(timely, issued):<14}"
+                f"{pct(timely, demanded):<16}"
                 f"{pct(demanded, accesses)}"
             )
 

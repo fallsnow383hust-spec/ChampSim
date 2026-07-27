@@ -91,13 +91,24 @@ struct runtime_state {
 
   void stamp_instruction(uint64_t instr_id, uint64_t ip)
   {
-    if (ip >= PIM_PC_BEGIN && ip < PIM_PC_END) {
-      if ((ip & PIMCFG_MARKER_BIT) != 0 && descriptor_observer != nullptr) {
-        descriptor_observer(next_descriptor, current_context);
-        ++next_descriptor;
-      }
+    if (ip >= PIM_PC_BEGIN && ip < PIM_PC_END)
       instruction_context.insert_or_assign(instr_id, current_context);
+  }
+
+  void retire_instruction(uint64_t instr_id, uint64_t ip)
+  {
+    const auto found = instruction_context.find(instr_id);
+    if (ip >= PIM_PC_BEGIN && ip < PIM_PC_END && (ip & PIMCFG_MARKER_BIT) != 0) {
+      const auto context = found == instruction_context.end() ? uint8_t{0} : found->second;
+      if (descriptor_observer != nullptr)
+        descriptor_observer(next_descriptor, context);
+      ++next_descriptor;
     }
+
+    // A retired instruction has completed every memory operation, so its
+    // issue-time loop-context stamp is no longer needed by the STLB.
+    if (found != instruction_context.end())
+      instruction_context.erase(found);
   }
 
   [[nodiscard]] std::optional<uint8_t> context_for(uint64_t instr_id) const
