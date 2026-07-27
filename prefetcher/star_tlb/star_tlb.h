@@ -226,7 +226,9 @@ struct star_tlb : public champsim::modules::prefetcher {
   void feedback_edge(const pending_entry& prediction, int adjustment);
 
   static void boundary_callback(uint8_t target_context);
+  static void descriptor_callback(uint64_t descriptor_index, uint8_t context);
   void on_loop_boundary(uint8_t target_context);
+  void on_descriptor_marker(uint64_t descriptor_index, uint8_t context);
   void observe_descriptor(uint64_t site_tag, uint8_t context, const descriptor& current);
   std::optional<descriptor> apply_edge(const descriptor& current, const edge_selection& edge) const;
 

@@ -205,13 +205,15 @@ def emit_batches(
     addresses: list[int],
     *,
     is_store: bool,
+    first_ip: int | None = None,
 ) -> int:
     capacity = 2 if is_store else 4
     count = 0
     for offset in range(0, len(addresses), capacity):
+        batch_ip = first_ip if offset == 0 and first_ip is not None else ip
         output.write(
             pack_memory_batch(
-                ip,
+                batch_ip,
                 addresses[offset : offset + capacity],
                 is_store=is_store,
             )
@@ -300,7 +302,11 @@ def convert(
             ),
         }
         memory_instructions += emit_batches(
-            output, ip_base | 0, role_addresses["A"], is_store=False
+            output,
+            ip_base | 0,
+            role_addresses["A"],
+            is_store=False,
+            first_ip=ip_base | args.pimcfg_marker_bit,
         )
         memory_instructions += emit_batches(
             output, ip_base | 1, role_addresses["B"], is_store=False
@@ -368,6 +374,11 @@ def main() -> int:
         type=lambda value: int(value, 0),
         default=0x500000,
     )
+    parser.add_argument(
+        "--pimcfg-marker-bit",
+        type=lambda value: int(value, 0),
+        default=0x4,
+    )
     parser.add_argument("--max-records", type=int, default=0)
     args = parser.parse_args()
 
@@ -392,6 +403,11 @@ def main() -> int:
     )
     if any(value <= 0 for value in blocking):
         raise SystemExit("blocking parameters must be positive")
+    if (
+        args.pimcfg_marker_bit <= 0
+        or args.pimcfg_marker_bit & ((1 << ROLE_BITS) - 1)
+    ):
+        raise SystemExit("--pimcfg-marker-bit must not overlap role bits")
     if (
         args.page_bytes <= 0
         or args.page_bytes & (args.page_bytes - 1)
@@ -431,6 +447,7 @@ def main() -> int:
             "ip_encoding": "[pim_site][role:2]",
             "roles": {"A": 0, "B": 1, "C": 2},
             "phases": PHASES,
+            "pimcfg_marker_bit": hex(args.pimcfg_marker_bit),
             "shape": {"m": args.m, "n": args.n, "k": args.k},
             "blocking": {
                 "mc": args.mc,

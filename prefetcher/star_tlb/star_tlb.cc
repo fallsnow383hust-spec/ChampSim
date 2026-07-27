@@ -54,7 +54,7 @@ double average(uint64_t sum, uint64_t count) { return count == 0 ? 0.0 : static_
 
 uint8_t star_tlb::role_from_ip(champsim::address ip) { return static_cast<uint8_t>(as_u64(ip) & 0x3ULL); }
 
-uint64_t star_tlb::site_key_from_ip(champsim::address ip) { return as_u64(ip) & ~0x3ULL; }
+uint64_t star_tlb::site_key_from_ip(champsim::address ip) { return as_u64(ip) & ~0x1fULL; }
 
 uint64_t star_tlb::vpn_from_address(champsim::address addr) { return as_u64(champsim::page_number{addr}); }
 
@@ -362,6 +362,27 @@ void star_tlb::boundary_callback(uint8_t target_context)
 {
   if (active_instance != nullptr)
     active_instance->on_loop_boundary(target_context);
+}
+
+void star_tlb::descriptor_callback(uint64_t descriptor_index, uint8_t context)
+{
+  if (active_instance != nullptr)
+    active_instance->on_descriptor_marker(descriptor_index, context);
+}
+
+void star_tlb::on_descriptor_marker(uint64_t descriptor_index, uint8_t context)
+{
+  if (!descriptor_sideband_ready)
+    return;
+  if (descriptor_index >= descriptors.size()) {
+    ++graph.descriptor_mismatch;
+    return;
+  }
+  if (descriptor_index != descriptor_cursor)
+    ++graph.descriptor_mismatch;
+  descriptor_cursor = static_cast<std::size_t>(descriptor_index + 1);
+  const auto& current = descriptors[descriptor_index];
+  observe_descriptor(current.raw_site_pc, context, current);
 }
 
 std::optional<star_tlb::descriptor> star_tlb::apply_edge(const descriptor& current, const edge_selection& edge) const
@@ -688,6 +709,7 @@ void star_tlb::prefetcher_initialize()
   gemm_runtime_loop_context::state.reset();
   active_instance = this;
   gemm_runtime_loop_context::predicted_backedge_observer = &star_tlb::boundary_callback;
+  gemm_runtime_loop_context::descriptor_observer = &star_tlb::descriptor_callback;
 
   if (event_log.is_open())
     event_log.close();
@@ -725,27 +747,9 @@ uint32_t star_tlb::prefetcher_cache_operate(champsim::address addr, champsim::ad
   record_demand(demand_vpn, cache_hit != 0, useful_prefetch);
   candidates.erase(demand_vpn);
 
-  uint8_t context = 0;
   const auto found_context = gemm_runtime_loop_context::state.context_for(instr_id);
   if (!found_context.has_value())
     ++missing_runtime_context;
-  else
-    context = *found_context;
-
-  if (descriptor_sideband_ready && role == ROLE_A && descriptor_cursor < descriptors.size()) {
-    const auto raw_address = as_u64(full_addr);
-    const auto& expected = descriptors[descriptor_cursor];
-    if (raw_address == expected.a_base) {
-      observe_descriptor(site_key_from_ip(ip), context, expected);
-      ++descriptor_cursor;
-    } else {
-      // Only the first A access of a record is the architectural base. Other
-      // A accesses are exact footprint probes and must not consume descriptors.
-      const auto page_matches = (raw_address >> LOG2_PAGE_SIZE) == (expected.a_base >> LOG2_PAGE_SIZE);
-      if (page_matches && raw_address != expected.a_base)
-        ++graph.descriptor_mismatch;
-    }
-  }
   return metadata_in;
 }
 
@@ -859,6 +863,7 @@ void star_tlb::prefetcher_final_stats()
 
   if (active_instance == this) {
     gemm_runtime_loop_context::predicted_backedge_observer = nullptr;
+    gemm_runtime_loop_context::descriptor_observer = nullptr;
     active_instance = nullptr;
   }
 }

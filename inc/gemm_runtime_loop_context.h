@@ -9,7 +9,9 @@
 namespace gemm_runtime_loop_context
 {
 using predicted_backedge_observer_type = void (*)(uint8_t);
+using descriptor_observer_type = void (*)(uint64_t, uint8_t);
 inline predicted_backedge_observer_type predicted_backedge_observer = nullptr;
+inline descriptor_observer_type descriptor_observer = nullptr;
 
 // Single-core experiment sideband. It models a small hardware loop detector:
 // a predicted taken backward branch allocates a runtime context id, and the id
@@ -20,6 +22,7 @@ struct runtime_state {
   static constexpr uint64_t PIM_PC_END = 0x500000;
   static constexpr uint64_t LOOP_BRANCH_PC_BEGIN = 0x500000;
   static constexpr uint64_t LOOP_BRANCH_PC_END = 0x500100;
+  static constexpr uint64_t PIMCFG_MARKER_BIT = 0x4;
   static constexpr uint8_t MAX_CONTEXTS = 6;
 
   std::unordered_map<uint64_t, uint8_t> instruction_context{};
@@ -27,6 +30,7 @@ struct runtime_state {
   std::array<uint64_t, MAX_CONTEXTS + 1> context_branch_pc{};
   uint8_t current_context = 0;
   uint8_t next_context = 1;
+  uint64_t next_descriptor = 0;
   uint64_t predicted_backedges = 0;
   uint64_t actual_backedges = 0;
   uint64_t correctly_predicted_backedges = 0;
@@ -41,6 +45,7 @@ struct runtime_state {
     context_branch_pc = {};
     current_context = 0;
     next_context = 1;
+    next_descriptor = 0;
     predicted_backedges = 0;
     actual_backedges = 0;
     correctly_predicted_backedges = 0;
@@ -86,8 +91,13 @@ struct runtime_state {
 
   void stamp_instruction(uint64_t instr_id, uint64_t ip)
   {
-    if (ip >= PIM_PC_BEGIN && ip < PIM_PC_END)
+    if (ip >= PIM_PC_BEGIN && ip < PIM_PC_END) {
+      if ((ip & PIMCFG_MARKER_BIT) != 0 && descriptor_observer != nullptr) {
+        descriptor_observer(next_descriptor, current_context);
+        ++next_descriptor;
+      }
       instruction_context.insert_or_assign(instr_id, current_context);
+    }
   }
 
   [[nodiscard]] std::optional<uint8_t> context_for(uint64_t instr_id) const
