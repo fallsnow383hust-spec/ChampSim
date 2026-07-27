@@ -1,0 +1,254 @@
+#ifndef STAR_TLB_H
+#define STAR_TLB_H
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <fstream>
+#include <optional>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+#include "address.h"
+#include "champsim.h"
+#include "modules.h"
+
+// STAR-TLB: Semantic Tile-footprint and Affine-Reuse Translation Prefetcher.
+//
+// The simulator receives PIMCFG/PIMGEMM descriptors through the canonical CSV
+// named by STAR_TLB_DESCRIPTOR_CSV. This sideband models fields that are
+// architecturally visible to a real implementation. The binary trace still
+// supplies all demand translations and all dynamic loop branches.
+//
+// RPRG edges are trained atomically for the A/B/C address tuple:
+//
+//   (PIM site, source loop phase)
+//       -> (target loop phase, delta_A, delta_B, delta_C, next tile shape)
+//
+// A selected edge predicts a complete descriptor. The Page Footprint
+// Generator expands the descriptor into exact A/B/C VPN sets. The scheduler
+// uses an adaptive PTW-latency/PIM-interval estimate to issue translations
+// close to, but before, their predicted first use.
+struct star_tlb : public champsim::modules::prefetcher {
+  static constexpr uint8_t ROLE_A = 0;
+  static constexpr uint8_t ROLE_B = 1;
+  static constexpr uint8_t ROLE_C = 2;
+  static constexpr uint8_t ROLE_COUNT = 3;
+  static constexpr uint8_t CONTEXT_COUNT = 7;
+  static constexpr uint8_t ANY_CONTEXT = 0xff;
+
+  struct descriptor {
+    uint64_t raw_site_pc = 0;
+    uint64_t a_base = 0;
+    uint64_t b_base = 0;
+    uint64_t c_base = 0;
+    uint64_t lda = 0;
+    uint64_t ldb = 0;
+    uint64_t ldc = 0;
+    uint8_t valid_m = 0;
+    uint8_t valid_n = 0;
+    uint8_t valid_k = 0;
+    uint8_t flags = 0;
+  };
+
+  struct graph_edge {
+    uint64_t site_tag = 0;
+    std::array<int64_t, ROLE_COUNT> byte_delta{};
+    uint64_t lda = 0;
+    uint64_t ldb = 0;
+    uint64_t ldc = 0;
+    uint16_t generation = 0;
+    uint8_t occurrences = 0;
+    int8_t usefulness = 0;
+    uint8_t source_context = 0;
+    uint8_t target_context = 0;
+    uint8_t confidence = 0;
+    uint8_t lru = 0;
+    uint8_t valid_m = 0;
+    uint8_t valid_n = 0;
+    uint8_t valid_k = 0;
+    uint8_t flags = 0;
+    bool valid = false;
+  };
+
+  struct edge_selection {
+    std::array<int64_t, ROLE_COUNT> byte_delta{};
+    uint64_t lda = 0;
+    uint64_t ldb = 0;
+    uint64_t ldc = 0;
+    uint16_t generation = 0;
+    uint16_t set = 0;
+    uint16_t score = 0;
+    uint8_t way = 0;
+    uint8_t source_context = 0;
+    uint8_t target_context = 0;
+    uint8_t confidence = 0;
+    uint8_t valid_m = 0;
+    uint8_t valid_n = 0;
+    uint8_t valid_k = 0;
+    uint8_t flags = 0;
+    bool valid = false;
+  };
+
+  struct candidate_entry {
+    uint64_t vpn = 0;
+    uint64_t created_cycle = 0;
+    uint64_t ready_cycle = 0;
+    uint64_t target_cycle = 0;
+    uint16_t edge_generation = 0;
+    uint16_t edge_set = 0;
+    uint16_t edge_score = 0;
+    uint8_t edge_way = 0;
+    uint8_t role = 0;
+    uint8_t distance = 0;
+    uint8_t source_context = 0;
+    uint8_t target_context = 0;
+    uint8_t edge_confidence = 0;
+    uint8_t reuse_count = 1;
+  };
+
+  struct pending_entry : candidate_entry {
+    uint64_t prediction_id = 0;
+    uint64_t issue_cycle = 0;
+    uint64_t demand_cycle = 0;
+    uint64_t fill_cycle = 0;
+    bool demand_seen = false;
+    bool fill_seen = false;
+    bool evicted_before_demand = false;
+  };
+
+  struct role_stats {
+    uint64_t demand_access = 0;
+    uint64_t demand_miss = 0;
+    uint64_t footprint_pages = 0;
+    uint64_t footprint_reused = 0;
+    uint64_t candidates = 0;
+    uint64_t candidate_merged = 0;
+    uint64_t filtered_resident = 0;
+    uint64_t filtered_inflight = 0;
+    uint64_t filtered_pending = 0;
+    uint64_t filtered_capacity = 0;
+    uint64_t issued = 0;
+    uint64_t rejected = 0;
+    uint64_t demanded_after_issue = 0;
+    uint64_t timely = 0;
+    uint64_t late = 0;
+    uint64_t late_completed = 0;
+    uint64_t redundant = 0;
+    uint64_t too_early = 0;
+    uint64_t never_demanded = 0;
+    uint64_t unresolved_late = 0;
+    uint64_t issue_to_demand_sum = 0;
+    uint64_t ready_lead_sum = 0;
+    uint64_t late_by_sum = 0;
+  };
+
+  struct graph_stats {
+    uint64_t boundary_triggers = 0;
+    uint64_t descriptors_seen = 0;
+    uint64_t descriptor_mismatch = 0;
+    uint64_t transitions = 0;
+    uint64_t edge_allocations = 0;
+    uint64_t edge_reinforcements = 0;
+    uint64_t edge_evictions = 0;
+    uint64_t edge_selected = 0;
+    uint64_t no_edge = 0;
+    uint64_t low_confidence = 0;
+    uint64_t ambiguous = 0;
+    uint64_t prediction_chains = 0;
+    uint64_t predicted_descriptors = 0;
+    uint64_t positive_feedback = 0;
+    uint64_t negative_feedback = 0;
+    uint64_t stale_feedback = 0;
+  };
+
+  static constexpr std::size_t EDGE_SETS = 64;
+  static constexpr std::size_t EDGE_WAYS = 4;
+  static constexpr std::size_t MAX_CANDIDATES = 512;
+  static constexpr std::size_t MAX_PENDING = 256;
+  static constexpr uint8_t EDGE_CONFIDENCE_THRESHOLD = 2;
+  static constexpr uint16_t EDGE_SCORE_MARGIN = 8;
+  static constexpr uint8_t MAX_LOOKAHEAD = 4;
+  static constexpr uint64_t FRONTEND_TO_PIM_CYCLES = 8;
+  static constexpr uint64_t PIM_PC_BEGIN = 0x400000;
+  static constexpr uint64_t PIM_PC_END = 0x500000;
+
+  static_assert((EDGE_SETS & (EDGE_SETS - 1)) == 0);
+
+  std::vector<descriptor> descriptors{};
+  std::size_t descriptor_cursor = 0;
+  descriptor last_descriptor{};
+  uint64_t last_site_tag = 0;
+  uint64_t last_descriptor_cycle = 0;
+  uint8_t last_context = 0;
+  bool have_last_descriptor = false;
+  bool descriptor_sideband_ready = false;
+
+  std::array<std::array<graph_edge, EDGE_WAYS>, EDGE_SETS> edge_table{};
+  std::unordered_map<uint64_t, candidate_entry> candidates{};
+  std::unordered_map<uint64_t, pending_entry> pending{};
+  std::array<role_stats, ROLE_COUNT> stats{};
+  graph_stats graph{};
+  std::ofstream event_log{};
+
+  uint64_t current_cycle = 0;
+  uint64_t demand_seq = 0;
+  uint64_t prediction_seq = 0;
+  uint64_t pim_interval_ema = 128;
+  uint64_t walk_latency_ema = 256;
+  uint16_t edge_generation = 1;
+  uint64_t ignored_non_pim = 0;
+  uint64_t missing_runtime_context = 0;
+  bool finalized = false;
+
+  static inline star_tlb* active_instance = nullptr;
+
+  explicit star_tlb(CACHE* cache) : champsim::modules::prefetcher(cache) {}
+
+  static uint8_t role_from_ip(champsim::address ip);
+  static uint64_t site_key_from_ip(champsim::address ip);
+  static uint64_t vpn_from_address(champsim::address addr);
+  static std::string_view role_name(uint8_t role);
+  static std::string_view context_name(uint8_t context);
+  static bool signed_delta(uint64_t newer, uint64_t older, int64_t& result);
+  static bool add_delta(uint64_t address, int64_t delta, uint64_t& result);
+  static int8_t saturating_utility(int8_t value, int adjustment);
+  static uint64_t ema(uint64_t old_value, uint64_t sample);
+
+  bool load_descriptors(const char* path);
+  std::size_t edge_set_index(uint64_t site_tag, uint8_t source_context) const;
+  uint16_t edge_score(const graph_edge& edge) const;
+  void touch_edge(std::size_t set, std::size_t way);
+  void train_edge(uint64_t site_tag, uint8_t source_context, uint8_t target_context, const descriptor& previous,
+                  const descriptor& current);
+  edge_selection select_edge(uint64_t site_tag, uint8_t source_context, uint8_t required_target);
+  void feedback_edge(const pending_entry& prediction, int adjustment);
+
+  static void boundary_callback(uint8_t target_context);
+  void on_loop_boundary(uint8_t target_context);
+  void observe_descriptor(uint64_t site_tag, uint8_t context, const descriptor& current);
+  std::optional<descriptor> apply_edge(const descriptor& current, const edge_selection& edge) const;
+
+  std::vector<uint64_t> footprint(const descriptor& desc, uint8_t role) const;
+  void enqueue_footprint(const descriptor& predicted, uint8_t distance, const edge_selection& edge);
+  void enqueue_vpn(uint64_t vpn, uint8_t role, uint8_t distance, const edge_selection& edge);
+  uint8_t lookahead_distance() const;
+  bool local_tlb_contains(uint64_t vpn) const;
+  bool local_tlb_inflight(uint64_t vpn) const;
+  bool issue_one_candidate(uint32_t metadata_in = 0);
+  void record_demand(uint64_t vpn, bool cache_hit, bool useful_prefetch);
+  void expire_entries();
+  void write_event(uint64_t vpn, const pending_entry& prediction, std::string_view outcome);
+  void finalize_unresolved();
+
+  uint32_t prefetcher_cache_operate(champsim::address addr, champsim::address full_addr, champsim::address ip, uint8_t cache_hit,
+                                    bool useful_prefetch, access_type type, uint64_t instr_id, uint32_t metadata_in);
+  uint32_t prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr,
+                                 uint32_t metadata_in);
+  void prefetcher_cycle_operate();
+  void prefetcher_initialize();
+  void prefetcher_final_stats();
+};
+
+#endif
