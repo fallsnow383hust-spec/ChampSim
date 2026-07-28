@@ -9,6 +9,7 @@
 #include <optional>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "address.h"
@@ -119,6 +120,49 @@ struct star_tlb : public champsim::modules::prefetcher {
     bool evicted_before_demand = false;
   };
 
+  // Side-effect-free Acc@1 record. It is created before the target descriptor
+  // is visible and resolved only when that exact dynamic descriptor retires.
+  struct accuracy_record {
+    descriptor predicted{};
+    uint64_t prediction_id = 0;
+    uint64_t source_descriptor_index = 0;
+    uint64_t target_descriptor_index = 0;
+    uint64_t source_instr_id = 0;
+    uint64_t branch_instr_id = 0;
+    uint64_t loop_branch_pc = 0;
+    uint64_t prediction_cycle = 0;
+    uint16_t edge_generation = 0;
+    uint16_t edge_set = 0;
+    uint16_t edge_score = 0;
+    uint8_t edge_way = 0;
+    uint8_t source_context = 0;
+    uint8_t predicted_context = 0;
+    uint8_t edge_confidence = 0;
+    bool primary_for_target = false;
+    bool source_committed = false;
+  };
+
+  struct accuracy_bucket {
+    uint64_t predictions = 0;
+    uint64_t resolved = 0;
+    uint64_t context_correct = 0;
+    std::array<uint64_t, ROLE_COUNT> byte_correct{};
+    std::array<uint64_t, ROLE_COUNT> vpn_correct{};
+    uint64_t triplet_byte_correct = 0;
+    uint64_t triplet_vpn_correct = 0;
+    uint64_t descriptor_exact = 0;
+  };
+
+  struct accuracy_stats {
+    accuracy_bucket all{};
+    accuracy_bucket primary{};
+    std::array<accuracy_bucket, CONTEXT_COUNT> by_actual_context{};
+    uint64_t duplicate_targets = 0;
+    uint64_t source_not_committed = 0;
+    uint64_t out_of_range = 0;
+    uint64_t unresolved = 0;
+  };
+
   // Allocated before retirement so a loop boundary can use the nearest older
   // dynamic PIM descriptor rather than a stale global committed descriptor.
   struct pdq_entry {
@@ -220,18 +264,28 @@ struct star_tlb : public champsim::modules::prefetcher {
   std::array<std::array<graph_edge, EDGE_WAYS>, EDGE_SETS> edge_table{};
   std::unordered_map<uint64_t, candidate_entry> candidates{};
   std::unordered_map<uint64_t, pending_entry> pending{};
+  std::deque<accuracy_record> accuracy_pending{};
+  std::unordered_set<uint64_t> accuracy_primary_targets{};
+  std::unordered_set<uint64_t> accuracy_resolved_targets{};
+  std::unordered_set<uint64_t> accuracy_correct_targets{};
   std::array<role_stats, ROLE_COUNT> stats{};
   graph_stats graph{};
+  accuracy_stats accuracy{};
   std::ofstream event_log{};
+  std::ofstream accuracy_log{};
+  std::ofstream graph_log{};
 
   uint64_t current_cycle = 0;
   uint64_t demand_seq = 0;
   uint64_t prediction_seq = 0;
+  uint64_t accuracy_prediction_seq = 0;
   uint64_t pim_interval_ema = 128;
   uint64_t walk_latency_ema = 256;
   uint16_t edge_generation = 1;
   uint64_t ignored_non_pim = 0;
   uint64_t missing_runtime_context = 0;
+  std::size_t descriptor_limit = 0;
+  bool accuracy_only = false;
   bool finalized = false;
 
   static inline star_tlb* active_instance = nullptr;
@@ -264,9 +318,20 @@ struct star_tlb : public champsim::modules::prefetcher {
   void on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
   void on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
   void pair_boundaries();
-  void predict_from_pair(const pdq_entry& source, uint8_t target_context);
+  void predict_from_pair(const pdq_entry& source, uint64_t branch_instr_id, uint8_t target_context);
   void observe_descriptor(uint64_t site_tag, uint8_t context, const descriptor& current);
   std::optional<descriptor> apply_edge(const descriptor& current, const edge_selection& edge) const;
+  void record_accuracy_prediction(const pdq_entry& source, uint64_t branch_instr_id, const descriptor& predicted,
+                                  const edge_selection& edge);
+  void mark_accuracy_source_committed(uint64_t descriptor_index, uint64_t instr_id);
+  void resolve_accuracy(uint64_t descriptor_index, uint8_t actual_context, const descriptor& actual);
+  void update_accuracy_bucket(accuracy_bucket& bucket, const accuracy_record& prediction, uint8_t actual_context,
+                              const descriptor& actual);
+  void write_accuracy_event(const accuracy_record& prediction, uint8_t actual_context, const descriptor* actual,
+                            std::string_view outcome);
+  void finalize_accuracy();
+  void write_graph_event(std::string_view operation, std::size_t set, int way, const graph_edge* edge, uint64_t site_tag,
+                         uint8_t source_context, uint8_t target_context, uint16_t score = 0);
 
   std::vector<uint64_t> footprint(const descriptor& desc, uint8_t role) const;
   void enqueue_footprint(const descriptor& predicted, uint8_t distance, const edge_selection& edge);

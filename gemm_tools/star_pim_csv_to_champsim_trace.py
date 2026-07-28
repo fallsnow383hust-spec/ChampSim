@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a full-page PIM-GEMM trace for STAR-TLB.
+"""Build a PIM-GEMM trace for STAR-TLB accuracy or performance experiments.
 
 Each canonical PIMGEMM CSV record is expanded into one demand translation per
 unique 4-KiB page in the strided A/B/C tile footprints. Up to four load pages
@@ -278,29 +278,36 @@ def convert(
                 f"invalid tile dimensions at CSV row {row_index + 2}"
             )
 
-        role_addresses = {
-            "A": page_footprint_addresses(
-                parse_int(row["a_tile_base"]),
-                valid_m,
-                valid_k * 2,
-                parse_int(row["a_row_stride_bytes"]),
-                args.page_bytes,
-            ),
-            "B": page_footprint_addresses(
-                parse_int(row["b_tile_base"]),
-                valid_k,
-                valid_n * 2,
-                parse_int(row["b_row_stride_bytes"]),
-                args.page_bytes,
-            ),
-            "C": page_footprint_addresses(
-                parse_int(row["c_tile_base"]),
-                valid_m,
-                valid_n * 4,
-                parse_int(row["c_row_stride_bytes"]),
-                args.page_bytes,
-            ),
-        }
+        if args.base_only:
+            role_addresses = {
+                "A": [parse_int(row["a_tile_base"])],
+                "B": [parse_int(row["b_tile_base"])],
+                "C": [parse_int(row["c_tile_base"])],
+            }
+        else:
+            role_addresses = {
+                "A": page_footprint_addresses(
+                    parse_int(row["a_tile_base"]),
+                    valid_m,
+                    valid_k * 2,
+                    parse_int(row["a_row_stride_bytes"]),
+                    args.page_bytes,
+                ),
+                "B": page_footprint_addresses(
+                    parse_int(row["b_tile_base"]),
+                    valid_k,
+                    valid_n * 2,
+                    parse_int(row["b_row_stride_bytes"]),
+                    args.page_bytes,
+                ),
+                "C": page_footprint_addresses(
+                    parse_int(row["c_tile_base"]),
+                    valid_m,
+                    valid_n * 4,
+                    parse_int(row["c_row_stride_bytes"]),
+                    args.page_bytes,
+                ),
+            }
         memory_instructions += emit_batches(
             output,
             ip_base | 0,
@@ -380,6 +387,7 @@ def main() -> int:
         default=0x4,
     )
     parser.add_argument("--max-records", type=int, default=0)
+    parser.add_argument("--base-only", action="store_true", help="emit only the three architected A/B/C base addresses")
     args = parser.parse_args()
 
     inferred = infer_shape(args.csv_trace)
@@ -442,7 +450,9 @@ def main() -> int:
         {
             "input": str(args.csv_trace),
             "output": str(args.output_trace),
-            "translation_granularity": "full_page_footprint",
+            "translation_granularity": (
+                "base_addresses" if args.base_only else "full_page_footprint"
+            ),
             "page_bytes": args.page_bytes,
             "ip_encoding": "[pim_site][role:2]",
             "roles": {"A": 0, "B": 1, "C": 2},
