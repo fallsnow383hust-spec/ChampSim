@@ -154,8 +154,8 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
     // fetch/decode time. Stamp that runtime context onto following PIM uops;
     // the STLB later recovers it by dynamic instruction id despite OoO issue.
     gemm_runtime_loop_context::state.observe_branch(
-        arch_instr.ip.to<uint64_t>(), arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>(), arch_instr.branch_taken,
-        arch_instr.branch_target.to<uint64_t>());
+        arch_instr.instr_id, arch_instr.ip.to<uint64_t>(), arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>(),
+        arch_instr.branch_taken, arch_instr.branch_target.to<uint64_t>());
 
     if (predicted_branch_target != arch_instr.branch_target
         || (((arch_instr.branch == BRANCH_CONDITIONAL) || (arch_instr.branch == BRANCH_OTHER))

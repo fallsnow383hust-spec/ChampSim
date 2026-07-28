@@ -358,19 +358,56 @@ void star_tlb::feedback_edge(const pending_entry& prediction, int adjustment)
     ++graph.negative_feedback;
 }
 
-void star_tlb::boundary_callback(uint8_t target_context)
+void star_tlb::boundary_callback(uint64_t branch_instr_id, uint8_t target_context)
 {
   if (active_instance != nullptr)
-    active_instance->on_loop_boundary(target_context);
+    active_instance->on_loop_boundary(branch_instr_id, target_context);
 }
 
-void star_tlb::descriptor_callback(uint64_t descriptor_index, uint8_t context)
+void star_tlb::descriptor_dispatch_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
 {
   if (active_instance != nullptr)
-    active_instance->on_descriptor_marker(descriptor_index, context);
+    active_instance->on_descriptor_dispatch(descriptor_index, instr_id, context);
 }
 
-void star_tlb::on_descriptor_marker(uint64_t descriptor_index, uint8_t context)
+void star_tlb::descriptor_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
+{
+  if (active_instance != nullptr)
+    active_instance->on_descriptor_marker(descriptor_index, instr_id, context);
+}
+
+void star_tlb::on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
+{
+  if (!descriptor_sideband_ready)
+    return;
+  if (descriptor_index >= descriptors.size()) {
+    ++graph.descriptor_mismatch;
+    return;
+  }
+  if (std::any_of(pdq.begin(), pdq.end(), [instr_id](const auto& entry) { return entry.instr_id == instr_id; }))
+    return;
+
+  if (pdq.size() >= PDQ_ENTRIES) {
+    const auto victim = std::find_if(pdq.begin(), pdq.end(), [](const auto& entry) { return entry.committed; });
+    if (victim == pdq.end()) {
+      ++graph.pdq_capacity_stalls;
+      return;
+    }
+    pdq.erase(victim);
+  }
+
+  pdq_entry entry{};
+  entry.value = descriptors[descriptor_index];
+  entry.descriptor_index = descriptor_index;
+  entry.instr_id = instr_id;
+  entry.dispatch_cycle = current_cycle;
+  entry.context = context;
+  pdq.push_back(entry);
+  ++graph.pdq_dispatches;
+  pair_boundaries();
+}
+
+void star_tlb::on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
 {
   if (!descriptor_sideband_ready)
     return;
@@ -382,6 +419,19 @@ void star_tlb::on_descriptor_marker(uint64_t descriptor_index, uint8_t context)
     ++graph.descriptor_mismatch;
   descriptor_cursor = static_cast<std::size_t>(descriptor_index + 1);
   const auto& current = descriptors[descriptor_index];
+
+  const auto pdq_match = std::find_if(pdq.begin(), pdq.end(), [descriptor_index, instr_id](const auto& entry) {
+    return entry.descriptor_index == descriptor_index && entry.instr_id == instr_id;
+  });
+  if (pdq_match == pdq.end()) {
+    ++graph.pair_sequence_conflicts;
+  } else {
+    pdq_match->committed = true;
+    pdq_match->context = context;
+    ++graph.pdq_commits;
+  }
+
+  // RPRG is updated only here, on the committed path.
   observe_descriptor(current.raw_site_pc, context, current);
 }
 
@@ -410,19 +460,52 @@ uint8_t star_tlb::lookahead_distance() const
   return static_cast<uint8_t>(std::clamp<uint64_t>(intervals + 1, 2, MAX_LOOKAHEAD));
 }
 
-void star_tlb::on_loop_boundary(uint8_t target_context)
+void star_tlb::on_loop_boundary(uint64_t branch_instr_id, uint8_t target_context)
 {
-  if (!have_last_descriptor || target_context == 0 || target_context >= CONTEXT_COUNT)
+  if (target_context == 0 || target_context >= CONTEXT_COUNT)
     return;
   ++graph.boundary_triggers;
-  ++graph.prediction_chains;
+  if (lbq.size() >= LBQ_ENTRIES) {
+    lbq.pop_front();
+    ++graph.lbq_capacity_drops;
+  }
+  lbq.push_back({branch_instr_id, current_cycle, target_context});
+  ++graph.lbq_allocations;
+  pair_boundaries();
+}
 
-  descriptor predicted = last_descriptor;
-  uint8_t source_context = last_context;
+void star_tlb::pair_boundaries()
+{
+  for (auto boundary = lbq.begin(); boundary != lbq.end();) {
+    const auto source = std::find_if(pdq.rbegin(), pdq.rend(), [&](const auto& entry) {
+      return entry.instr_id < boundary->branch_instr_id;
+    });
+    if (source == pdq.rend()) {
+      ++boundary;
+      continue;
+    }
+
+    ++graph.lbq_pairs;
+    if (source->descriptor_index >= descriptor_cursor) {
+      const auto lag = source->descriptor_index - descriptor_cursor + 1;
+      graph.committed_base_lag_sum += lag;
+      graph.committed_base_lag_max = std::max(graph.committed_base_lag_max, lag);
+    }
+    predict_from_pair(*source, boundary->target_context);
+    boundary = lbq.erase(boundary);
+  }
+}
+
+void star_tlb::predict_from_pair(const pdq_entry& source, uint8_t target_context)
+{
+  ++graph.prediction_chains;
+  descriptor predicted = source.value;
+  uint8_t source_context = source.context;
+  const auto site_tag = source.value.raw_site_pc;
   const auto horizon = lookahead_distance();
   for (uint8_t distance = 1; distance <= horizon; ++distance) {
     const auto required = distance == 1 ? target_context : ANY_CONTEXT;
-    const auto edge = select_edge(last_site_tag, source_context, required);
+    const auto edge = select_edge(site_tag, source_context, required);
     if (!edge.valid)
       break;
     const auto next = apply_edge(predicted, edge);
@@ -438,16 +521,16 @@ void star_tlb::on_loop_boundary(uint8_t target_context)
 void star_tlb::observe_descriptor(uint64_t site_tag, uint8_t context, const descriptor& current)
 {
   ++graph.descriptors_seen;
-  if (have_last_descriptor && last_site_tag == site_tag)
-    train_edge(site_tag, last_context, context, last_descriptor, current);
+  if (have_last_committed_descriptor && last_committed_site_tag == site_tag)
+    train_edge(site_tag, last_committed_context, context, last_committed_descriptor, current);
 
-  if (have_last_descriptor && current_cycle > last_descriptor_cycle)
-    pim_interval_ema = ema(pim_interval_ema, current_cycle - last_descriptor_cycle);
-  last_descriptor = current;
-  last_site_tag = site_tag;
-  last_context = context;
-  last_descriptor_cycle = current_cycle;
-  have_last_descriptor = true;
+  if (have_last_committed_descriptor && current_cycle > last_committed_descriptor_cycle)
+    pim_interval_ema = ema(pim_interval_ema, current_cycle - last_committed_descriptor_cycle);
+  last_committed_descriptor = current;
+  last_committed_site_tag = site_tag;
+  last_committed_context = context;
+  last_committed_descriptor_cycle = current_cycle;
+  have_last_committed_descriptor = true;
 }
 
 std::vector<uint64_t> star_tlb::footprint(const descriptor& desc, uint8_t role) const
@@ -688,6 +771,8 @@ void star_tlb::prefetcher_initialize()
 {
   descriptors.clear();
   descriptor_cursor = 0;
+  pdq.clear();
+  lbq.clear();
   edge_table = {};
   candidates.clear();
   pending.clear();
@@ -701,7 +786,7 @@ void star_tlb::prefetcher_initialize()
   edge_generation = 1;
   ignored_non_pim = 0;
   missing_runtime_context = 0;
-  have_last_descriptor = false;
+  have_last_committed_descriptor = false;
   finalized = false;
 
   const auto* descriptor_path = std::getenv("STAR_TLB_DESCRIPTOR_CSV");
@@ -709,6 +794,7 @@ void star_tlb::prefetcher_initialize()
   gemm_runtime_loop_context::state.reset();
   active_instance = this;
   gemm_runtime_loop_context::predicted_backedge_observer = &star_tlb::boundary_callback;
+  gemm_runtime_loop_context::descriptor_dispatch_observer = &star_tlb::descriptor_dispatch_callback;
   gemm_runtime_loop_context::descriptor_observer = &star_tlb::descriptor_callback;
 
   if (event_log.is_open())
@@ -720,8 +806,8 @@ void star_tlb::prefetcher_initialize()
                    "created_cycle,ready_cycle,target_cycle,issue_cycle,demand_cycle,fill_cycle,outcome,issue_to_demand,"
                    "ready_lead,late_by\n";
   }
-  fmt::print("star_tlb_v1 initialize descriptors:{} sideband_ready:{} interval_seed:{} walk_seed:{} max_lookahead:{}\n",
-             descriptors.size(), descriptor_sideband_ready, pim_interval_ema, walk_latency_ema, MAX_LOOKAHEAD);
+  fmt::print("star_tlb_v2 initialize descriptors:{} sideband_ready:{} interval_seed:{} walk_seed:{} max_lookahead:{} pdq:{} lbq:{}\n",
+             descriptors.size(), descriptor_sideband_ready, pim_interval_ema, walk_latency_ema, MAX_LOOKAHEAD, PDQ_ENTRIES, LBQ_ENTRIES);
 }
 
 uint32_t star_tlb::prefetcher_cache_operate(champsim::address addr, champsim::address full_addr, champsim::address ip, uint8_t cache_hit,
@@ -836,21 +922,25 @@ void star_tlb::prefetcher_final_stats()
     valid_edges += std::count_if(set.begin(), set.end(), [](const auto& edge) { return edge.valid; });
 
   fmt::print(
-      "star_tlb_v1 graph descriptors_loaded:{} descriptors_seen:{} descriptor_cursor:{} descriptor_mismatch:{} boundary_triggers:{} "
+      "star_tlb_v2 graph descriptors_loaded:{} descriptors_seen:{} descriptor_cursor:{} descriptor_mismatch:{} boundary_triggers:{} "
       "transitions:{} edge_allocations:{} edge_reinforcements:{} edge_evictions:{} valid_edges:{} edge_capacity:{} selected:{} "
       "no_edge:{} low_confidence:{} ambiguous:{} prediction_chains:{} predicted_descriptors:{} positive_feedback:{} "
       "negative_feedback:{} stale_feedback:{} candidate_outstanding:{} pending_outstanding:{} interval_ema:{} walk_latency_ema:{} "
-      "lookahead:{} ignored_non_pim:{} missing_context:{}\n",
+      "lookahead:{} ignored_non_pim:{} missing_context:{} pdq_dispatch:{} pdq_commit:{} pdq_occupancy:{} pdq_stall:{} "
+      "lbq_alloc:{} lbq_pair:{} lbq_unpaired:{} lbq_drop:{} seq_conflict:{} committed_base_lag_avg:{:.2f} "
+      "committed_base_lag_max:{}\n",
       descriptors.size(), graph.descriptors_seen, descriptor_cursor, graph.descriptor_mismatch, graph.boundary_triggers, graph.transitions,
       graph.edge_allocations, graph.edge_reinforcements, graph.edge_evictions, valid_edges, EDGE_SETS * EDGE_WAYS, graph.edge_selected,
       graph.no_edge, graph.low_confidence, graph.ambiguous, graph.prediction_chains, graph.predicted_descriptors, graph.positive_feedback,
       graph.negative_feedback, graph.stale_feedback, candidates.size(), pending.size(), pim_interval_ema, walk_latency_ema,
-      static_cast<unsigned>(lookahead_distance()), ignored_non_pim, missing_runtime_context);
+      static_cast<unsigned>(lookahead_distance()), ignored_non_pim, missing_runtime_context, graph.pdq_dispatches, graph.pdq_commits,
+      pdq.size(), graph.pdq_capacity_stalls, graph.lbq_allocations, graph.lbq_pairs, lbq.size(), graph.lbq_capacity_drops,
+      graph.pair_sequence_conflicts, average(graph.committed_base_lag_sum, graph.lbq_pairs), graph.committed_base_lag_max);
 
   for (uint8_t role = 0; role < ROLE_COUNT; ++role) {
     const auto& value = stats[role];
     fmt::print(
-        "star_tlb_v1 role {} access:{} miss:{} footprint_pages:{} footprint_reused:{} candidate:{} candidate_merged:{} "
+        "star_tlb_v2 role {} access:{} miss:{} footprint_pages:{} footprint_reused:{} candidate:{} candidate_merged:{} "
         "resident_filter:{} inflight_filter:{} pending_filter:{} capacity_filter:{} issued:{} rejected:{} demanded:{} timely:{} "
         "late:{} late_completed:{} redundant:{} too_early:{} never:{} unresolved_late:{} issue_to_demand_avg:{:.2f} "
         "ready_lead_avg:{:.2f} late_by_avg:{:.2f}\n",
@@ -863,6 +953,7 @@ void star_tlb::prefetcher_final_stats()
 
   if (active_instance == this) {
     gemm_runtime_loop_context::predicted_backedge_observer = nullptr;
+    gemm_runtime_loop_context::descriptor_dispatch_observer = nullptr;
     gemm_runtime_loop_context::descriptor_observer = nullptr;
     active_instance = nullptr;
   }

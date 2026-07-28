@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <fstream>
 #include <optional>
 #include <string_view>
@@ -118,6 +119,24 @@ struct star_tlb : public champsim::modules::prefetcher {
     bool evicted_before_demand = false;
   };
 
+  // Allocated before retirement so a loop boundary can use the nearest older
+  // dynamic PIM descriptor rather than a stale global committed descriptor.
+  struct pdq_entry {
+    descriptor value{};
+    uint64_t descriptor_index = 0;
+    uint64_t instr_id = 0;
+    uint64_t dispatch_cycle = 0;
+    uint8_t context = 0;
+    bool committed = false;
+  };
+
+  // Holds a predicted loop event until it can be paired by program order.
+  struct lbq_entry {
+    uint64_t branch_instr_id = 0;
+    uint64_t created_cycle = 0;
+    uint8_t target_context = 0;
+  };
+
   struct role_stats {
     uint64_t demand_access = 0;
     uint64_t demand_miss = 0;
@@ -161,12 +180,23 @@ struct star_tlb : public champsim::modules::prefetcher {
     uint64_t positive_feedback = 0;
     uint64_t negative_feedback = 0;
     uint64_t stale_feedback = 0;
+    uint64_t pdq_dispatches = 0;
+    uint64_t pdq_commits = 0;
+    uint64_t pdq_capacity_stalls = 0;
+    uint64_t lbq_allocations = 0;
+    uint64_t lbq_pairs = 0;
+    uint64_t lbq_capacity_drops = 0;
+    uint64_t pair_sequence_conflicts = 0;
+    uint64_t committed_base_lag_sum = 0;
+    uint64_t committed_base_lag_max = 0;
   };
 
   static constexpr std::size_t EDGE_SETS = 64;
   static constexpr std::size_t EDGE_WAYS = 4;
   static constexpr std::size_t MAX_CANDIDATES = 512;
   static constexpr std::size_t MAX_PENDING = 256;
+  static constexpr std::size_t PDQ_ENTRIES = 32;
+  static constexpr std::size_t LBQ_ENTRIES = 16;
   static constexpr uint8_t EDGE_CONFIDENCE_THRESHOLD = 2;
   static constexpr uint16_t EDGE_SCORE_MARGIN = 8;
   static constexpr uint8_t MAX_LOOKAHEAD = 4;
@@ -178,13 +208,15 @@ struct star_tlb : public champsim::modules::prefetcher {
 
   std::vector<descriptor> descriptors{};
   std::size_t descriptor_cursor = 0;
-  descriptor last_descriptor{};
-  uint64_t last_site_tag = 0;
-  uint64_t last_descriptor_cycle = 0;
-  uint8_t last_context = 0;
-  bool have_last_descriptor = false;
+  descriptor last_committed_descriptor{};
+  uint64_t last_committed_site_tag = 0;
+  uint64_t last_committed_descriptor_cycle = 0;
+  uint8_t last_committed_context = 0;
+  bool have_last_committed_descriptor = false;
   bool descriptor_sideband_ready = false;
 
+  std::deque<pdq_entry> pdq{};
+  std::deque<lbq_entry> lbq{};
   std::array<std::array<graph_edge, EDGE_WAYS>, EDGE_SETS> edge_table{};
   std::unordered_map<uint64_t, candidate_entry> candidates{};
   std::unordered_map<uint64_t, pending_entry> pending{};
@@ -225,10 +257,14 @@ struct star_tlb : public champsim::modules::prefetcher {
   edge_selection select_edge(uint64_t site_tag, uint8_t source_context, uint8_t required_target);
   void feedback_edge(const pending_entry& prediction, int adjustment);
 
-  static void boundary_callback(uint8_t target_context);
-  static void descriptor_callback(uint64_t descriptor_index, uint8_t context);
-  void on_loop_boundary(uint8_t target_context);
-  void on_descriptor_marker(uint64_t descriptor_index, uint8_t context);
+  static void boundary_callback(uint64_t branch_instr_id, uint8_t target_context);
+  static void descriptor_dispatch_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
+  static void descriptor_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
+  void on_loop_boundary(uint64_t branch_instr_id, uint8_t target_context);
+  void on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
+  void on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
+  void pair_boundaries();
+  void predict_from_pair(const pdq_entry& source, uint8_t target_context);
   void observe_descriptor(uint64_t site_tag, uint8_t context, const descriptor& current);
   std::optional<descriptor> apply_edge(const descriptor& current, const edge_selection& edge) const;
 
