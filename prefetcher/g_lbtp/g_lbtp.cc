@@ -236,7 +236,7 @@ g_lbtp::edge_selection g_lbtp::select_edge(uint64_t stream_key, uint8_t source_c
   return best;
 }
 
-void g_lbtp::boundary_callback(uint8_t target_context)
+void g_lbtp::boundary_callback(uint64_t, uint8_t target_context)
 {
   if (active_instance != nullptr)
     active_instance->on_loop_boundary(target_context);

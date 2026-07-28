@@ -178,7 +178,7 @@ struct g_lbtp : public champsim::modules::prefetcher {
   edge_selection select_edge(uint64_t stream_key, uint8_t source_context, lookup_result& result,
                              uint8_t required_target = CONTEXT_COUNT);
   void feedback_edge(const pending_entry& prediction, int adjustment);
-  static void boundary_callback(uint8_t target_context);
+  static void boundary_callback(uint64_t branch_instr_id, uint8_t target_context);
   void on_loop_boundary(uint8_t target_context);
 
   bool local_tlb_contains(uint64_t vpn) const;
