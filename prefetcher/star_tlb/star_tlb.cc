@@ -1345,7 +1345,7 @@ void star_tlb::prefetcher_final_stats()
 
   fmt::print(
       "star_tlb_v2 runtime predicted_backedges:{} actual_backedges:{} correct_backedges:{} "
-      "missed_backedges:{} false_backedges:{} pending_branch_resolutions:{} context_overflow:{}\n",
+      "missed_backedges:{} false_backedges:{} unresolved_branch_tail:{} context_overflow:{}\n",
       gemm_runtime_loop_context::state.predicted_backedges,
       gemm_runtime_loop_context::state.actual_backedges,
       gemm_runtime_loop_context::state.correctly_predicted_backedges,

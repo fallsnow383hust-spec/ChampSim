@@ -128,7 +128,7 @@
     "max_fill": 1,
     "prefetch_as_load": true,
     "virtual_prefetch": false,
-    "prefetch_activate": "LOAD,WRITE",
+    "prefetch_activate": "LOAD,WRITE,RFO",
     "prefetcher": "star_tlb"
   },
 

@@ -163,6 +163,29 @@ def main() -> int:
             entry[f"{role}_vpn_accuracy"] = ratio(sum(correct(row, f"{role}_vpn_correct") for row in rows), len(rows))
         context_rows.append(entry)
 
+    if context_rows:
+        macro_accuracy = sum(
+            float(row["triplet_vpn_accuracy"]) for row in context_rows
+        ) / len(context_rows)
+        dominant = max(context_rows, key=lambda row: int(row["predictions"]))
+        worst = min(context_rows, key=lambda row: float(row["triplet_vpn_accuracy"]))
+        lines += [
+            "",
+            "Per-context audit (prevents frequent inner loops from hiding outer-boundary failures)",
+            f"macro-average triplet VPN Acc@1: {100.0 * macro_accuracy:.4f}%",
+            f"dominant context share: context {dominant['context_id']} "
+            f"{pct(int(dominant['predictions']), len(primary))}",
+            f"worst context: {worst['context_id']} "
+            f"({worst['offline_loop_level'] or 'unlabeled'}) "
+            f"triplet VPN Acc@1={100.0 * float(worst['triplet_vpn_accuracy']):.4f}%",
+        ]
+        for row in context_rows:
+            lines.append(
+                f"context {row['context_id']} ({row['offline_loop_level'] or 'unlabeled'}): "
+                f"samples={row['predictions']} context_acc={100.0 * float(row['context_accuracy']):.4f}% "
+                f"triplet_vpn_acc={100.0 * float(row['triplet_vpn_accuracy']):.4f}%"
+            )
+
     confidence_rows: list[dict[str, object]] = []
     for confidence in sorted({int(row["edge_confidence"]) for row in primary}):
         rows = [row for row in primary if int(row["edge_confidence"]) == confidence]

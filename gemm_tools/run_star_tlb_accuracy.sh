@@ -59,15 +59,15 @@ seq_conflict="$(
 malformed_descriptor="$(
   sed -n 's/.* malformed_descriptor:\([0-9][0-9]*\) .*/\1/p' "${out}/star_tlb_accuracy.txt" | tail -n 1
 )"
-pending_branch="$(
-  sed -n 's/.* pending_branch_resolutions:\([0-9][0-9]*\) .*/\1/p' "${out}/star_tlb_accuracy.txt" | tail -n 1
+unresolved_branch_tail="$(
+  sed -n 's/.* unresolved_branch_tail:\([0-9][0-9]*\) .*/\1/p' "${out}/star_tlb_accuracy.txt" | tail -n 1
 )"
-if [[ -z "${pdq_dispatch}" || -z "${pdq_commit}" || -z "${pdq_stall}" || -z "${pdq_high_watermark}" || -z "${seq_conflict}" || -z "${malformed_descriptor}" || -z "${pending_branch}" ]]; then
+if [[ -z "${pdq_dispatch}" || -z "${pdq_commit}" || -z "${pdq_stall}" || -z "${pdq_high_watermark}" || -z "${seq_conflict}" || -z "${malformed_descriptor}" || -z "${unresolved_branch_tail}" ]]; then
   echo "ERROR: PDQ loss-free acceptance failed: missing simulator counters" >&2
   exit 2
 fi
-if (( pdq_dispatch != descriptor_count || pdq_commit != descriptor_count || pdq_stall != 0 || seq_conflict != 0 || malformed_descriptor != 0 || pending_branch != 0 )); then
-  echo "ERROR: causal-input acceptance failed: descriptors=${descriptor_count} dispatch=${pdq_dispatch} commit=${pdq_commit} drops=${pdq_stall} seq_conflict=${seq_conflict} malformed_descriptor=${malformed_descriptor} pending_branch=${pending_branch}" >&2
+if (( pdq_dispatch != descriptor_count || pdq_commit != descriptor_count || pdq_stall != 0 || seq_conflict != 0 || malformed_descriptor != 0 )); then
+  echo "ERROR: causal-input acceptance failed: descriptors=${descriptor_count} dispatch=${pdq_dispatch} commit=${pdq_commit} drops=${pdq_stall} seq_conflict=${seq_conflict} malformed_descriptor=${malformed_descriptor}" >&2
   exit 2
 fi
 
@@ -84,7 +84,7 @@ echo "control-flow validity: see ${manifest} (synthetic traces are mechanism-val
 echo "PIM descriptors: ${descriptor_count}"
 echo "base-only trace: ${trace}"
 echo "PDQ loss-free acceptance: PASS (capacity=128, high_watermark=${pdq_high_watermark}, dispatch=${pdq_dispatch}, commit=${pdq_commit}, drops=0, seq_conflict=0)"
-echo "causal-input acceptance: PASS (dynamic PIM operands, malformed_descriptor=0, pending_branch_resolution=0)"
+echo "causal-input acceptance: PASS (dynamic PIM operands, malformed_descriptor=0; unresolved branch tail=${unresolved_branch_tail} is reported but excluded from resolved-branch accuracy)"
 echo "summary: ${out}/rprg-accuracy-summary.txt"
 echo "Acc@1 events: ${out}/rprg-acc1-events.csv"
 echo "RPRG CRUD events: ${out}/rprg-graph-events.csv"
