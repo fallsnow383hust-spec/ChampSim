@@ -14,6 +14,7 @@
 
 #include "address.h"
 #include "champsim.h"
+#include "gemm_runtime_loop_context.h"
 #include "modules.h"
 
 // STAR-TLB: Semantic Tile-footprint and Affine-Reuse Translation Prefetcher.
@@ -177,6 +178,23 @@ struct star_tlb : public champsim::modules::prefetcher {
     uint64_t address_overflow = 0;
   };
 
+  struct branch_audit_stats {
+    uint64_t events = 0;
+    uint64_t predicted = 0;
+    uint64_t actual = 0;
+    uint64_t exact = 0;
+    uint64_t false_positive = 0;
+    uint64_t false_negative = 0;
+    uint64_t wrong_target = 0;
+    std::array<uint64_t, CONTEXT_COUNT> events_by_context{};
+    std::array<uint64_t, CONTEXT_COUNT> predicted_by_context{};
+    std::array<uint64_t, CONTEXT_COUNT> actual_by_context{};
+    std::array<uint64_t, CONTEXT_COUNT> exact_by_context{};
+    std::array<uint64_t, CONTEXT_COUNT> false_positive_by_context{};
+    std::array<uint64_t, CONTEXT_COUNT> false_negative_by_context{};
+    std::array<uint64_t, CONTEXT_COUNT> wrong_target_by_context{};
+  };
+
   // Allocated before retirement so a loop boundary can use the nearest older
   // dynamic PIM descriptor rather than a stale global committed descriptor.
   struct pdq_entry {
@@ -250,8 +268,10 @@ struct star_tlb : public champsim::modules::prefetcher {
     uint64_t committed_base_lag_max = 0;
   };
 
+  // Associativity-only ablation: edge_set_index intentionally remains
+  // hash(PIM site, source context), so 4-way versus 8-way is causal.
   static constexpr std::size_t EDGE_SETS = 64;
-  static constexpr std::size_t EDGE_WAYS = 4;
+  static constexpr std::size_t EDGE_WAYS = 8;
   static constexpr std::size_t MAX_CANDIDATES = 512;
   static constexpr std::size_t MAX_PENDING = 256;
   // The measured full-trace frontend lead is at most 103 PIM descriptors.
@@ -291,10 +311,12 @@ struct star_tlb : public champsim::modules::prefetcher {
   graph_stats graph{};
   accuracy_stats accuracy{};
   oracle_graph_stats oracle_graph{};
+  branch_audit_stats branch_audit{};
   std::ofstream event_log{};
   std::ofstream accuracy_log{};
   std::ofstream graph_log{};
   std::ofstream oracle_graph_log{};
+  std::ofstream branch_log{};
 
   uint64_t current_cycle = 0;
   uint64_t demand_seq = 0;
@@ -336,9 +358,11 @@ struct star_tlb : public champsim::modules::prefetcher {
   void feedback_edge(const pending_entry& prediction, int adjustment);
 
   static void boundary_callback(uint64_t branch_instr_id, uint8_t target_context);
+  static void resolved_branch_callback(const gemm_runtime_loop_context::resolved_backedge_event& event);
   static void descriptor_dispatch_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
   static void descriptor_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
   void on_loop_boundary(uint64_t branch_instr_id, uint8_t target_context);
+  void on_resolved_branch(const gemm_runtime_loop_context::resolved_backedge_event& event);
   void on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
   void on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
   void pair_boundaries();

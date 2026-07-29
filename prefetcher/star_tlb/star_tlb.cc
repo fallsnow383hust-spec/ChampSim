@@ -443,6 +443,12 @@ void star_tlb::boundary_callback(uint64_t branch_instr_id, uint8_t target_contex
     active_instance->on_loop_boundary(branch_instr_id, target_context);
 }
 
+void star_tlb::resolved_branch_callback(const gemm_runtime_loop_context::resolved_backedge_event& event)
+{
+  if (active_instance != nullptr)
+    active_instance->on_resolved_branch(event);
+}
+
 void star_tlb::descriptor_dispatch_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
 {
   if (active_instance != nullptr)
@@ -726,6 +732,8 @@ void star_tlb::finalize_accuracy()
     graph_log.flush();
   if (oracle_graph_log)
     oracle_graph_log.flush();
+  if (branch_log)
+    branch_log.flush();
 }
 
 uint8_t star_tlb::lookahead_distance() const
@@ -734,6 +742,48 @@ uint8_t star_tlb::lookahead_distance() const
   // A loop boundary is observed immediately before the next PIM descriptor, so
   // distance 1 offers only frontend-to-PIM lead time. Add one full descriptor.
   return static_cast<uint8_t>(std::clamp<uint64_t>(intervals + 1, 2, MAX_LOOKAHEAD));
+}
+
+void star_tlb::on_resolved_branch(const gemm_runtime_loop_context::resolved_backedge_event& event)
+{
+  ++branch_audit.events;
+  branch_audit.predicted += static_cast<uint64_t>(event.predicted_backedge);
+  branch_audit.actual += static_cast<uint64_t>(event.actual_backedge);
+  const bool target_match = event.predicted_target == event.actual_target;
+  const bool exact = event.predicted_backedge && event.actual_backedge && target_match;
+  const bool wrong_target = event.predicted_backedge && event.actual_backedge && !target_match;
+  const bool false_positive = event.predicted_backedge && !event.actual_backedge;
+  const bool false_negative = !event.predicted_backedge && event.actual_backedge;
+  branch_audit.exact += static_cast<uint64_t>(exact);
+  branch_audit.wrong_target += static_cast<uint64_t>(wrong_target);
+  branch_audit.false_positive += static_cast<uint64_t>(false_positive);
+  branch_audit.false_negative += static_cast<uint64_t>(false_negative);
+
+  if (event.context < CONTEXT_COUNT) {
+    ++branch_audit.events_by_context[event.context];
+    branch_audit.predicted_by_context[event.context] += static_cast<uint64_t>(event.predicted_backedge);
+    branch_audit.actual_by_context[event.context] += static_cast<uint64_t>(event.actual_backedge);
+    branch_audit.exact_by_context[event.context] += static_cast<uint64_t>(exact);
+    branch_audit.wrong_target_by_context[event.context] += static_cast<uint64_t>(wrong_target);
+    branch_audit.false_positive_by_context[event.context] += static_cast<uint64_t>(false_positive);
+    branch_audit.false_negative_by_context[event.context] += static_cast<uint64_t>(false_negative);
+  }
+
+  if (!branch_log)
+    return;
+  std::string_view outcome = "false_negative";
+  if (exact)
+    outcome = "correct";
+  else if (wrong_target)
+    outcome = "wrong_target";
+  else if (false_positive)
+    outcome = "false_positive";
+  branch_log << event.instr_id << ',' << event.branch_pc << ',' << context_name(event.context) << ','
+             << static_cast<unsigned>(event.predicted_taken) << ',' << event.predicted_target << ','
+             << static_cast<unsigned>(event.actual_taken) << ',' << event.actual_target << ','
+             << static_cast<unsigned>(event.predicted_backedge) << ',' << static_cast<unsigned>(event.actual_backedge) << ','
+             << static_cast<unsigned>(event.predicted_taken == event.actual_taken) << ','
+             << static_cast<unsigned>(target_match) << ',' << outcome << '\n';
 }
 
 void star_tlb::on_loop_boundary(uint64_t branch_instr_id, uint8_t target_context)
@@ -1140,6 +1190,7 @@ void star_tlb::prefetcher_initialize()
   graph = {};
   accuracy = {};
   oracle_graph = {};
+  branch_audit = {};
   current_cycle = 0;
   demand_seq = 0;
   prediction_seq = 0;
@@ -1161,6 +1212,8 @@ void star_tlb::prefetcher_initialize()
   gemm_runtime_loop_context::state.reset();
   active_instance = this;
   gemm_runtime_loop_context::predicted_backedge_observer = graph_oracle_only ? nullptr : &star_tlb::boundary_callback;
+  gemm_runtime_loop_context::resolved_backedge_observer =
+      graph_oracle_only ? nullptr : &star_tlb::resolved_branch_callback;
   gemm_runtime_loop_context::descriptor_dispatch_observer =
       graph_oracle_only ? nullptr : &star_tlb::descriptor_dispatch_callback;
   gemm_runtime_loop_context::descriptor_observer = &star_tlb::descriptor_callback;
@@ -1173,6 +1226,8 @@ void star_tlb::prefetcher_initialize()
     graph_log.close();
   if (oracle_graph_log.is_open())
     oracle_graph_log.close();
+  if (branch_log.is_open())
+    branch_log.close();
   if (const auto* path = std::getenv("STAR_TLB_EVENT_LOG"); path != nullptr && *path != '\0') {
     event_log.open(path, std::ios::out | std::ios::trunc);
     if (event_log)
@@ -1202,6 +1257,12 @@ void star_tlb::prefetcher_initialize()
                           "edge_confidence,edge_score,pred_a,actual_a,a_byte_correct,a_vpn_correct,pred_b,actual_b,"
                           "b_byte_correct,b_vpn_correct,pred_c,actual_c,c_byte_correct,c_vpn_correct,triplet_byte_correct,"
                           "triplet_vpn_correct,descriptor_exact\n";
+  }
+  if (const auto* path = std::getenv("STAR_TLB_BRANCH_LOG"); path != nullptr && *path != '\0') {
+    branch_log.open(path, std::ios::out | std::ios::trunc);
+    if (branch_log)
+      branch_log << "branch_instr_id,branch_pc,context,predicted_taken,predicted_target,actual_taken,actual_target,"
+                    "predicted_backedge,actual_backedge,direction_correct,target_match,outcome\n";
   }
   fmt::print("star_tlb_v2 initialize descriptors:{} sideband_ready:{} accuracy_only:{} graph_oracle_only:{} descriptor_limit:{} "
              "interval_seed:{} walk_seed:{} max_lookahead:{} pdq:{} lbq:{}\n",
@@ -1325,14 +1386,15 @@ void star_tlb::prefetcher_final_stats()
 
   fmt::print(
       "star_tlb_v2 graph descriptors_loaded:{} descriptors_seen:{} descriptor_cursor:{} descriptor_mismatch:{} boundary_triggers:{} "
-      "transitions:{} edge_allocations:{} edge_reinforcements:{} edge_evictions:{} valid_edges:{} edge_capacity:{} selected:{} "
+      "transitions:{} edge_allocations:{} edge_reinforcements:{} edge_evictions:{} valid_edges:{} edge_sets:{} edge_ways:{} edge_capacity:{} selected:{} "
       "no_edge:{} low_confidence:{} ambiguous:{} prediction_chains:{} predicted_descriptors:{} positive_feedback:{} "
       "negative_feedback:{} stale_feedback:{} candidate_outstanding:{} pending_outstanding:{} interval_ema:{} walk_latency_ema:{} "
       "lookahead:{} ignored_non_pim:{} missing_context:{} pdq_capacity:{} pdq_dispatch:{} pdq_commit:{} pdq_occupancy:{} pdq_high_watermark:{} pdq_stall:{} pdq_loss_free:{} "
       "lbq_alloc:{} lbq_pair:{} lbq_unpaired:{} lbq_drop:{} seq_conflict:{} committed_base_lag_avg:{:.2f} "
       "committed_base_lag_max:{}\n",
       descriptors.size(), graph.descriptors_seen, descriptor_cursor, graph.descriptor_mismatch, graph.boundary_triggers, graph.transitions,
-      graph.edge_allocations, graph.edge_reinforcements, graph.edge_evictions, valid_edges, EDGE_SETS * EDGE_WAYS, graph.edge_selected,
+      graph.edge_allocations, graph.edge_reinforcements, graph.edge_evictions, valid_edges, EDGE_SETS, EDGE_WAYS,
+      EDGE_SETS * EDGE_WAYS, graph.edge_selected,
       graph.no_edge, graph.low_confidence, graph.ambiguous, graph.prediction_chains, graph.predicted_descriptors, graph.positive_feedback,
       graph.negative_feedback, graph.stale_feedback, candidates.size(), pending.size(), pim_interval_ema, walk_latency_ema,
       static_cast<unsigned>(accuracy_only ? 1 : lookahead_distance()), ignored_non_pim, missing_runtime_context, PDQ_ENTRIES,
@@ -1364,6 +1426,27 @@ void star_tlb::prefetcher_final_stats()
           average(by_context.vpn_correct[ROLE_A], by_context.resolved), average(by_context.vpn_correct[ROLE_B], by_context.resolved),
           average(by_context.vpn_correct[ROLE_C], by_context.resolved), average(by_context.triplet_vpn_correct, by_context.resolved),
           average(by_context.descriptor_exact, by_context.resolved));
+    }
+  }
+
+  if (!graph_oracle_only) {
+    fmt::print(
+        "star_tlb_v2 branch_audit events:{} predicted:{} actual:{} exact:{} false_positive:{} false_negative:{} wrong_target:{} "
+        "precision:{:.6f} recall:{:.6f}\n",
+        branch_audit.events, branch_audit.predicted, branch_audit.actual, branch_audit.exact, branch_audit.false_positive,
+        branch_audit.false_negative, branch_audit.wrong_target, average(branch_audit.exact, branch_audit.predicted),
+        average(branch_audit.exact, branch_audit.actual));
+    for (uint8_t context = 1; context < CONTEXT_COUNT; ++context) {
+      fmt::print(
+          "star_tlb_v2 branch_audit_context context:{} branch_pc:0x{:x} events:{} predicted:{} actual:{} exact:{} "
+          "false_positive:{} false_negative:{} wrong_target:{} precision:{:.6f} recall:{:.6f}\n",
+          context_name(context), gemm_runtime_loop_context::state.context_branch_pc[context],
+          branch_audit.events_by_context[context], branch_audit.predicted_by_context[context],
+          branch_audit.actual_by_context[context], branch_audit.exact_by_context[context],
+          branch_audit.false_positive_by_context[context], branch_audit.false_negative_by_context[context],
+          branch_audit.wrong_target_by_context[context],
+          average(branch_audit.exact_by_context[context], branch_audit.predicted_by_context[context]),
+          average(branch_audit.exact_by_context[context], branch_audit.actual_by_context[context]));
     }
   }
 
@@ -1409,6 +1492,7 @@ void star_tlb::prefetcher_final_stats()
 
   if (active_instance == this) {
     gemm_runtime_loop_context::predicted_backedge_observer = nullptr;
+    gemm_runtime_loop_context::resolved_backedge_observer = nullptr;
     gemm_runtime_loop_context::descriptor_dispatch_observer = nullptr;
     gemm_runtime_loop_context::descriptor_observer = nullptr;
     active_instance = nullptr;

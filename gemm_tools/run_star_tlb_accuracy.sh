@@ -37,6 +37,7 @@ STAR_TLB_DESCRIPTOR_LIMIT="${descriptor_count}" \
 STAR_TLB_ACCURACY_ONLY=1 \
 STAR_TLB_ACCURACY_LOG="${out}/rprg-acc1-events.csv" \
 STAR_TLB_GRAPH_LOG="${out}/rprg-graph-events.csv" \
+STAR_TLB_BRANCH_LOG="${out}/branch-prediction-events.csv" \
 "${star_bin}" --warmup-instructions 0 \
   --simulation-instructions "${sim_instr}" "${trace}" \
   | tee "${out}/star_tlb_accuracy.txt"
@@ -69,6 +70,10 @@ python3 "${root}/gemm_tools/summarize_star_tlb_accuracy.py" \
   "${out}/rprg-acc1-events.csv" "${out}/rprg-graph-events.csv" \
   --manifest "${manifest}" --output-dir "${out}"
 
+python3 "${root}/gemm_tools/summarize_star_tlb_branch_accuracy.py" \
+  "${out}/branch-prediction-events.csv" "${out}/rprg-acc1-events.csv" \
+  --output-dir "${out}"
+
 echo "accuracy-only mode: no translation prefetches issued"
 echo "PIM descriptors: ${descriptor_count}"
 echo "base-only trace: ${trace}"
@@ -76,3 +81,6 @@ echo "PDQ loss-free acceptance: PASS (capacity=128, high_watermark=${pdq_high_wa
 echo "summary: ${out}/rprg-accuracy-summary.txt"
 echo "Acc@1 events: ${out}/rprg-acc1-events.csv"
 echo "RPRG CRUD events: ${out}/rprg-graph-events.csv"
+echo "branch summary: ${out}/branch-prediction-summary.txt"
+echo "branch errors: ${out}/branch-prediction-errors.csv"
+echo "branch/RPRG correlation: ${out}/branch-rprg-context-error-correlation.csv"

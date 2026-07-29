@@ -9,10 +9,24 @@
 
 namespace gemm_runtime_loop_context
 {
+struct resolved_backedge_event {
+  uint64_t instr_id = 0;
+  uint64_t branch_pc = 0;
+  uint64_t predicted_target = 0;
+  uint64_t actual_target = 0;
+  uint8_t context = 0;
+  bool predicted_taken = false;
+  bool actual_taken = false;
+  bool predicted_backedge = false;
+  bool actual_backedge = false;
+};
+
 using predicted_backedge_observer_type = void (*)(uint64_t, uint8_t);
+using resolved_backedge_observer_type = void (*)(const resolved_backedge_event&);
 using descriptor_dispatch_observer_type = void (*)(uint64_t, uint64_t, uint8_t);
 using descriptor_observer_type = void (*)(uint64_t, uint64_t, uint8_t);
 inline predicted_backedge_observer_type predicted_backedge_observer = nullptr;
+inline resolved_backedge_observer_type resolved_backedge_observer = nullptr;
 inline descriptor_dispatch_observer_type descriptor_dispatch_observer = nullptr;
 inline descriptor_observer_type descriptor_observer = nullptr;
 
@@ -88,6 +102,12 @@ struct runtime_state {
       context = next_context++;
       branch_context.emplace(branch_pc, context);
       context_branch_pc[context] = branch_pc;
+    }
+
+    if (resolved_backedge_observer != nullptr) {
+      const resolved_backedge_event event{instr_id, branch_pc, predicted_target, actual_target, context, predicted_taken, actual_taken,
+                                           predicted_backedge, actual_backedge};
+      resolved_backedge_observer(event);
     }
 
     // Prediction may trigger an early prefetch. The correct-path trace is
