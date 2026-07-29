@@ -41,6 +41,30 @@ STAR_TLB_GRAPH_LOG="${out}/rprg-graph-events.csv" \
   --simulation-instructions "${sim_instr}" "${trace}" \
   | tee "${out}/star_tlb_accuracy.txt"
 
+pdq_dispatch="$(
+  sed -n 's/.* pdq_dispatch:\([0-9][0-9]*\) .*/\1/p' "${out}/star_tlb_accuracy.txt" | tail -n 1
+)"
+pdq_commit="$(
+  sed -n 's/.* pdq_commit:\([0-9][0-9]*\) .*/\1/p' "${out}/star_tlb_accuracy.txt" | tail -n 1
+)"
+pdq_stall="$(
+  sed -n 's/.* pdq_stall:\([0-9][0-9]*\) .*/\1/p' "${out}/star_tlb_accuracy.txt" | tail -n 1
+)"
+pdq_high_watermark="$(
+  sed -n 's/.* pdq_high_watermark:\([0-9][0-9]*\) .*/\1/p' "${out}/star_tlb_accuracy.txt" | tail -n 1
+)"
+seq_conflict="$(
+  sed -n 's/.* seq_conflict:\([0-9][0-9]*\) .*/\1/p' "${out}/star_tlb_accuracy.txt" | tail -n 1
+)"
+if [[ -z "${pdq_dispatch}" || -z "${pdq_commit}" || -z "${pdq_stall}" || -z "${pdq_high_watermark}" || -z "${seq_conflict}" ]]; then
+  echo "ERROR: PDQ loss-free acceptance failed: missing simulator counters" >&2
+  exit 2
+fi
+if (( pdq_dispatch != descriptor_count || pdq_commit != descriptor_count || pdq_stall != 0 || seq_conflict != 0 )); then
+  echo "ERROR: PDQ loss-free acceptance failed: descriptors=${descriptor_count} dispatch=${pdq_dispatch} commit=${pdq_commit} drops=${pdq_stall} seq_conflict=${seq_conflict}" >&2
+  exit 2
+fi
+
 python3 "${root}/gemm_tools/summarize_star_tlb_accuracy.py" \
   "${out}/rprg-acc1-events.csv" "${out}/rprg-graph-events.csv" \
   --manifest "${manifest}" --output-dir "${out}"
@@ -48,6 +72,7 @@ python3 "${root}/gemm_tools/summarize_star_tlb_accuracy.py" \
 echo "accuracy-only mode: no translation prefetches issued"
 echo "PIM descriptors: ${descriptor_count}"
 echo "base-only trace: ${trace}"
+echo "PDQ loss-free acceptance: PASS (capacity=128, high_watermark=${pdq_high_watermark}, dispatch=${pdq_dispatch}, commit=${pdq_commit}, drops=0, seq_conflict=0)"
 echo "summary: ${out}/rprg-accuracy-summary.txt"
 echo "Acc@1 events: ${out}/rprg-acc1-events.csv"
 echo "RPRG CRUD events: ${out}/rprg-graph-events.csv"

@@ -163,6 +163,20 @@ struct star_tlb : public champsim::modules::prefetcher {
     uint64_t unresolved = 0;
   };
 
+  enum class edge_lookup_status : uint8_t { selected, no_edge, low_confidence, ambiguous };
+
+  struct oracle_graph_stats {
+    accuracy_bucket all{};
+    std::array<accuracy_bucket, CONTEXT_COUNT> by_actual_context{};
+    std::array<uint64_t, CONTEXT_COUNT> eligible_by_actual_context{};
+    uint64_t eligible = 0;
+    uint64_t selected = 0;
+    uint64_t no_edge = 0;
+    uint64_t low_confidence = 0;
+    uint64_t ambiguous = 0;
+    uint64_t address_overflow = 0;
+  };
+
   // Allocated before retirement so a loop boundary can use the nearest older
   // dynamic PIM descriptor rather than a stale global committed descriptor.
   struct pdq_entry {
@@ -227,6 +241,7 @@ struct star_tlb : public champsim::modules::prefetcher {
     uint64_t pdq_dispatches = 0;
     uint64_t pdq_commits = 0;
     uint64_t pdq_capacity_stalls = 0;
+    uint64_t pdq_high_watermark = 0;
     uint64_t lbq_allocations = 0;
     uint64_t lbq_pairs = 0;
     uint64_t lbq_capacity_drops = 0;
@@ -239,7 +254,10 @@ struct star_tlb : public champsim::modules::prefetcher {
   static constexpr std::size_t EDGE_WAYS = 4;
   static constexpr std::size_t MAX_CANDIDATES = 512;
   static constexpr std::size_t MAX_PENDING = 256;
-  static constexpr std::size_t PDQ_ENTRIES = 32;
+  // The measured full-trace frontend lead is at most 103 PIM descriptors.
+  // Keep a bounded power-of-two margin; any overflow is reported as an
+  // evaluation failure instead of being silently hidden.
+  static constexpr std::size_t PDQ_ENTRIES = 128;
   static constexpr std::size_t LBQ_ENTRIES = 16;
   static constexpr uint8_t EDGE_CONFIDENCE_THRESHOLD = 2;
   static constexpr uint16_t EDGE_SCORE_MARGIN = 8;
@@ -255,6 +273,7 @@ struct star_tlb : public champsim::modules::prefetcher {
   descriptor last_committed_descriptor{};
   uint64_t last_committed_site_tag = 0;
   uint64_t last_committed_descriptor_cycle = 0;
+  uint64_t last_committed_descriptor_index = 0;
   uint8_t last_committed_context = 0;
   bool have_last_committed_descriptor = false;
   bool descriptor_sideband_ready = false;
@@ -271,9 +290,11 @@ struct star_tlb : public champsim::modules::prefetcher {
   std::array<role_stats, ROLE_COUNT> stats{};
   graph_stats graph{};
   accuracy_stats accuracy{};
+  oracle_graph_stats oracle_graph{};
   std::ofstream event_log{};
   std::ofstream accuracy_log{};
   std::ofstream graph_log{};
+  std::ofstream oracle_graph_log{};
 
   uint64_t current_cycle = 0;
   uint64_t demand_seq = 0;
@@ -286,6 +307,7 @@ struct star_tlb : public champsim::modules::prefetcher {
   uint64_t missing_runtime_context = 0;
   std::size_t descriptor_limit = 0;
   bool accuracy_only = false;
+  bool graph_oracle_only = false;
   bool finalized = false;
 
   static inline star_tlb* active_instance = nullptr;
@@ -308,6 +330,8 @@ struct star_tlb : public champsim::modules::prefetcher {
   void touch_edge(std::size_t set, std::size_t way);
   void train_edge(uint64_t site_tag, uint8_t source_context, uint8_t target_context, const descriptor& previous,
                   const descriptor& current);
+  edge_selection find_edge(uint64_t site_tag, uint8_t source_context, uint8_t required_target,
+                           edge_lookup_status& status) const;
   edge_selection select_edge(uint64_t site_tag, uint8_t source_context, uint8_t required_target);
   void feedback_edge(const pending_entry& prediction, int adjustment);
 
@@ -319,7 +343,8 @@ struct star_tlb : public champsim::modules::prefetcher {
   void on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
   void pair_boundaries();
   void predict_from_pair(const pdq_entry& source, uint64_t branch_instr_id, uint8_t target_context);
-  void observe_descriptor(uint64_t site_tag, uint8_t context, const descriptor& current);
+  void evaluate_oracle_graph(uint64_t descriptor_index, uint64_t site_tag, uint8_t context, const descriptor& current);
+  void observe_descriptor(uint64_t descriptor_index, uint64_t site_tag, uint8_t context, const descriptor& current);
   std::optional<descriptor> apply_edge(const descriptor& current, const edge_selection& edge) const;
   void record_accuracy_prediction(const pdq_entry& source, uint64_t branch_instr_id, const descriptor& predicted,
                                   const edge_selection& edge);

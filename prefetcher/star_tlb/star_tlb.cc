@@ -330,7 +330,8 @@ void star_tlb::train_edge(uint64_t site_tag, uint8_t source_context, uint8_t tar
   write_graph_event("allocate", set, static_cast<int>(victim), &edge, site_tag, source_context, target_context, edge_score(edge));
 }
 
-star_tlb::edge_selection star_tlb::select_edge(uint64_t site_tag, uint8_t source_context, uint8_t required_target)
+star_tlb::edge_selection star_tlb::find_edge(uint64_t site_tag, uint8_t source_context, uint8_t required_target,
+                                             edge_lookup_status& status) const
 {
   const auto set = edge_set_index(site_tag, source_context);
   const auto& ways = edge_table[set];
@@ -378,25 +379,47 @@ star_tlb::edge_selection star_tlb::select_edge(uint64_t site_tag, uint8_t source
   }
 
   if (!any) {
-    ++graph.no_edge;
-    write_graph_event("lookup_no_edge", set, -1, nullptr, site_tag, source_context, required_target);
+    status = edge_lookup_status::no_edge;
     return {};
   }
   if (!confident) {
-    ++graph.low_confidence;
-    write_graph_event("lookup_low_confidence", set, -1, nullptr, site_tag, source_context, required_target);
+    status = edge_lookup_status::low_confidence;
     return {};
   }
   if (runner && best.score < static_cast<uint16_t>(runner_score + EDGE_SCORE_MARGIN)) {
+    status = edge_lookup_status::ambiguous;
+    return {};
+  }
+  status = edge_lookup_status::selected;
+  return best;
+}
+
+star_tlb::edge_selection star_tlb::select_edge(uint64_t site_tag, uint8_t source_context, uint8_t required_target)
+{
+  edge_lookup_status status = edge_lookup_status::no_edge;
+  auto best = find_edge(site_tag, source_context, required_target, status);
+  const auto set = edge_set_index(site_tag, source_context);
+  switch (status) {
+  case edge_lookup_status::no_edge:
+    ++graph.no_edge;
+    write_graph_event("lookup_no_edge", set, -1, nullptr, site_tag, source_context, required_target);
+    return {};
+  case edge_lookup_status::low_confidence:
+    ++graph.low_confidence;
+    write_graph_event("lookup_low_confidence", set, -1, nullptr, site_tag, source_context, required_target);
+    return {};
+  case edge_lookup_status::ambiguous:
     ++graph.ambiguous;
     write_graph_event("lookup_ambiguous", set, -1, nullptr, site_tag, source_context, required_target, best.score);
     return {};
+  case edge_lookup_status::selected:
+    ++graph.edge_selected;
+    touch_edge(best.set, best.way);
+    write_graph_event("select", best.set, best.way, &edge_table[best.set][best.way], site_tag, source_context,
+                      best.target_context, best.score);
+    return best;
   }
-  ++graph.edge_selected;
-  touch_edge(best.set, best.way);
-  write_graph_event("select", best.set, best.way, &edge_table[best.set][best.way], site_tag, source_context,
-                    best.target_context, best.score);
-  return best;
+  return {};
 }
 
 void star_tlb::feedback_edge(const pending_entry& prediction, int adjustment)
@@ -447,6 +470,9 @@ void star_tlb::on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_
     const auto victim = std::find_if(pdq.begin(), pdq.end(), [](const auto& entry) { return entry.committed; });
     if (victim == pdq.end()) {
       ++graph.pdq_capacity_stalls;
+      if (graph.pdq_capacity_stalls == 1)
+        fmt::print("star_tlb_v2 error pdq_overflow capacity:{} descriptor_index:{} instr_id:{}; descriptor dropped\n",
+                   PDQ_ENTRIES, descriptor_index, instr_id);
       return;
     }
     pdq.erase(victim);
@@ -459,6 +485,7 @@ void star_tlb::on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_
   entry.dispatch_cycle = current_cycle;
   entry.context = context;
   pdq.push_back(entry);
+  graph.pdq_high_watermark = std::max<uint64_t>(graph.pdq_high_watermark, pdq.size());
   ++graph.pdq_dispatches;
   pair_boundaries();
 }
@@ -476,24 +503,29 @@ void star_tlb::on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id
   descriptor_cursor = static_cast<std::size_t>(descriptor_index + 1);
   const auto& current = descriptors[descriptor_index];
 
-  const auto pdq_match = std::find_if(pdq.begin(), pdq.end(), [descriptor_index, instr_id](const auto& entry) {
-    return entry.descriptor_index == descriptor_index && entry.instr_id == instr_id;
-  });
-  if (pdq_match == pdq.end()) {
-    ++graph.pair_sequence_conflicts;
-  } else {
-    pdq_match->committed = true;
-    pdq_match->context = context;
-    ++graph.pdq_commits;
+  if (!graph_oracle_only) {
+    const auto pdq_match = std::find_if(pdq.begin(), pdq.end(), [descriptor_index, instr_id](const auto& entry) {
+      return entry.descriptor_index == descriptor_index && entry.instr_id == instr_id;
+    });
+    if (pdq_match == pdq.end()) {
+      ++graph.pair_sequence_conflicts;
+    } else {
+      pdq_match->committed = true;
+      pdq_match->context = context;
+      ++graph.pdq_commits;
+    }
+
+    // Resolve Acc@1 before this descriptor trains the graph, preventing oracle
+    // leakage from the target into its own prediction.
+    mark_accuracy_source_committed(descriptor_index, instr_id);
+    resolve_accuracy(descriptor_index, context, current);
   }
 
-  // Resolve Acc@1 before this descriptor trains the graph, preventing oracle
-  // leakage from the target into its own prediction.
-  mark_accuracy_source_committed(descriptor_index, instr_id);
-  resolve_accuracy(descriptor_index, context, current);
+  if (graph_oracle_only)
+    evaluate_oracle_graph(descriptor_index, current.raw_site_pc, context, current);
 
   // RPRG is updated only here, on the committed path.
-  observe_descriptor(current.raw_site_pc, context, current);
+  observe_descriptor(descriptor_index, current.raw_site_pc, context, current);
 }
 
 std::optional<star_tlb::descriptor> star_tlb::apply_edge(const descriptor& current, const edge_selection& edge) const
@@ -692,6 +724,8 @@ void star_tlb::finalize_accuracy()
     accuracy_log.flush();
   if (graph_log)
     graph_log.flush();
+  if (oracle_graph_log)
+    oracle_graph_log.flush();
 }
 
 uint8_t star_tlb::lookahead_distance() const
@@ -763,7 +797,83 @@ void star_tlb::predict_from_pair(const pdq_entry& source, uint64_t branch_instr_
   }
 }
 
-void star_tlb::observe_descriptor(uint64_t site_tag, uint8_t context, const descriptor& current)
+void star_tlb::evaluate_oracle_graph(uint64_t descriptor_index, uint64_t site_tag, uint8_t context,
+                                     const descriptor& current)
+{
+  if (!have_last_committed_descriptor || last_committed_site_tag != site_tag)
+    return;
+
+  ++oracle_graph.eligible;
+  if (context < CONTEXT_COUNT)
+    ++oracle_graph.eligible_by_actual_context[context];
+
+  edge_lookup_status status = edge_lookup_status::no_edge;
+  const auto edge = find_edge(site_tag, last_committed_context, context, status);
+  std::string_view outcome = "no_edge";
+  std::optional<descriptor> predicted{};
+  switch (status) {
+  case edge_lookup_status::no_edge:
+    ++oracle_graph.no_edge;
+    break;
+  case edge_lookup_status::low_confidence:
+    ++oracle_graph.low_confidence;
+    outcome = "low_confidence";
+    break;
+  case edge_lookup_status::ambiguous:
+    ++oracle_graph.ambiguous;
+    outcome = "ambiguous";
+    break;
+  case edge_lookup_status::selected:
+    predicted = apply_edge(last_committed_descriptor, edge);
+    if (!predicted.has_value()) {
+      ++oracle_graph.address_overflow;
+      outcome = "address_overflow";
+      break;
+    }
+    ++oracle_graph.selected;
+    outcome = "selected";
+    accuracy_record record{};
+    record.predicted = *predicted;
+    record.predicted_context = edge.target_context;
+    record.source_context = last_committed_context;
+    record.source_committed = true;
+    ++oracle_graph.all.predictions;
+    update_accuracy_bucket(oracle_graph.all, record, context, current);
+    if (context < CONTEXT_COUNT) {
+      ++oracle_graph.by_actual_context[context].predictions;
+      update_accuracy_bucket(oracle_graph.by_actual_context[context], record, context, current);
+    }
+    break;
+  }
+
+  if (!oracle_graph_log)
+    return;
+  const descriptor empty{};
+  const auto& guess = predicted.has_value() ? *predicted : empty;
+  const bool a_byte = predicted.has_value() && guess.a_base == current.a_base;
+  const bool b_byte = predicted.has_value() && guess.b_base == current.b_base;
+  const bool c_byte = predicted.has_value() && guess.c_base == current.c_base;
+  const bool a_vpn = predicted.has_value() && (guess.a_base >> LOG2_PAGE_SIZE) == (current.a_base >> LOG2_PAGE_SIZE);
+  const bool b_vpn = predicted.has_value() && (guess.b_base >> LOG2_PAGE_SIZE) == (current.b_base >> LOG2_PAGE_SIZE);
+  const bool c_vpn = predicted.has_value() && (guess.c_base >> LOG2_PAGE_SIZE) == (current.c_base >> LOG2_PAGE_SIZE);
+  const bool geometry_exact = predicted.has_value() && guess.raw_site_pc == current.raw_site_pc && guess.lda == current.lda
+      && guess.ldb == current.ldb && guess.ldc == current.ldc && guess.valid_m == current.valid_m
+      && guess.valid_n == current.valid_n && guess.valid_k == current.valid_k && guess.flags == current.flags;
+
+  oracle_graph_log << last_committed_descriptor_index << ',' << descriptor_index << ','
+                   << context_name(last_committed_context) << ',' << context_name(context) << ',' << outcome << ','
+                   << edge.set << ',' << static_cast<unsigned>(edge.way) << ',' << edge.generation << ','
+                   << static_cast<unsigned>(edge.confidence) << ',' << edge.score << ','
+                   << guess.a_base << ',' << current.a_base << ',' << static_cast<unsigned>(a_byte) << ','
+                   << static_cast<unsigned>(a_vpn) << ',' << guess.b_base << ',' << current.b_base << ','
+                   << static_cast<unsigned>(b_byte) << ',' << static_cast<unsigned>(b_vpn) << ','
+                   << guess.c_base << ',' << current.c_base << ',' << static_cast<unsigned>(c_byte) << ','
+                   << static_cast<unsigned>(c_vpn) << ',' << static_cast<unsigned>(a_byte && b_byte && c_byte) << ','
+                   << static_cast<unsigned>(a_vpn && b_vpn && c_vpn) << ','
+                   << static_cast<unsigned>(geometry_exact && a_byte && b_byte && c_byte) << '\n';
+}
+
+void star_tlb::observe_descriptor(uint64_t descriptor_index, uint64_t site_tag, uint8_t context, const descriptor& current)
 {
   ++graph.descriptors_seen;
   if (have_last_committed_descriptor && last_committed_site_tag == site_tag)
@@ -772,6 +882,7 @@ void star_tlb::observe_descriptor(uint64_t site_tag, uint8_t context, const desc
   if (have_last_committed_descriptor && current_cycle > last_committed_descriptor_cycle)
     pim_interval_ema = ema(pim_interval_ema, current_cycle - last_committed_descriptor_cycle);
   last_committed_descriptor = current;
+  last_committed_descriptor_index = descriptor_index;
   last_committed_site_tag = site_tag;
   last_committed_context = context;
   last_committed_descriptor_cycle = current_cycle;
@@ -1028,6 +1139,7 @@ void star_tlb::prefetcher_initialize()
   stats = {};
   graph = {};
   accuracy = {};
+  oracle_graph = {};
   current_cycle = 0;
   demand_seq = 0;
   prediction_seq = 0;
@@ -1039,6 +1151,8 @@ void star_tlb::prefetcher_initialize()
   missing_runtime_context = 0;
   descriptor_limit = env_size("STAR_TLB_DESCRIPTOR_LIMIT");
   accuracy_only = env_enabled("STAR_TLB_ACCURACY_ONLY");
+  graph_oracle_only = env_enabled("STAR_TLB_GRAPH_ORACLE_ONLY");
+  accuracy_only = accuracy_only || graph_oracle_only;
   have_last_committed_descriptor = false;
   finalized = false;
 
@@ -1046,8 +1160,9 @@ void star_tlb::prefetcher_initialize()
   descriptor_sideband_ready = descriptor_path != nullptr && *descriptor_path != '\0' && load_descriptors(descriptor_path);
   gemm_runtime_loop_context::state.reset();
   active_instance = this;
-  gemm_runtime_loop_context::predicted_backedge_observer = &star_tlb::boundary_callback;
-  gemm_runtime_loop_context::descriptor_dispatch_observer = &star_tlb::descriptor_dispatch_callback;
+  gemm_runtime_loop_context::predicted_backedge_observer = graph_oracle_only ? nullptr : &star_tlb::boundary_callback;
+  gemm_runtime_loop_context::descriptor_dispatch_observer =
+      graph_oracle_only ? nullptr : &star_tlb::descriptor_dispatch_callback;
   gemm_runtime_loop_context::descriptor_observer = &star_tlb::descriptor_callback;
 
   if (event_log.is_open())
@@ -1056,6 +1171,8 @@ void star_tlb::prefetcher_initialize()
     accuracy_log.close();
   if (graph_log.is_open())
     graph_log.close();
+  if (oracle_graph_log.is_open())
+    oracle_graph_log.close();
   if (const auto* path = std::getenv("STAR_TLB_EVENT_LOG"); path != nullptr && *path != '\0') {
     event_log.open(path, std::ios::out | std::ios::trunc);
     if (event_log)
@@ -1078,10 +1195,18 @@ void star_tlb::prefetcher_initialize()
       graph_log << "cycle,operation,set,way,site_tag,source_context,target_context,source_loop_pc,target_loop_pc,delta_a,delta_b,delta_c,confidence,"
                    "occurrences,usefulness,lru,generation,valid,score\n";
   }
-  fmt::print("star_tlb_v2 initialize descriptors:{} sideband_ready:{} accuracy_only:{} descriptor_limit:{} interval_seed:{} "
-             "walk_seed:{} max_lookahead:{} pdq:{} lbq:{}\n",
-             descriptors.size(), descriptor_sideband_ready, accuracy_only, descriptor_limit, pim_interval_ema, walk_latency_ema,
-             MAX_LOOKAHEAD, PDQ_ENTRIES, LBQ_ENTRIES);
+  if (const auto* path = std::getenv("STAR_TLB_ORACLE_GRAPH_LOG"); path != nullptr && *path != '\0') {
+    oracle_graph_log.open(path, std::ios::out | std::ios::trunc);
+    if (oracle_graph_log)
+      oracle_graph_log << "source_seq,target_seq,source_context,target_context,outcome,edge_set,edge_way,edge_generation,"
+                          "edge_confidence,edge_score,pred_a,actual_a,a_byte_correct,a_vpn_correct,pred_b,actual_b,"
+                          "b_byte_correct,b_vpn_correct,pred_c,actual_c,c_byte_correct,c_vpn_correct,triplet_byte_correct,"
+                          "triplet_vpn_correct,descriptor_exact\n";
+  }
+  fmt::print("star_tlb_v2 initialize descriptors:{} sideband_ready:{} accuracy_only:{} graph_oracle_only:{} descriptor_limit:{} "
+             "interval_seed:{} walk_seed:{} max_lookahead:{} pdq:{} lbq:{}\n",
+             descriptors.size(), descriptor_sideband_ready, accuracy_only, graph_oracle_only, descriptor_limit, pim_interval_ema,
+             walk_latency_ema, MAX_LOOKAHEAD, PDQ_ENTRIES, LBQ_ENTRIES);
 }
 
 uint32_t star_tlb::prefetcher_cache_operate(champsim::address addr, champsim::address full_addr, champsim::address ip, uint8_t cache_hit,
@@ -1203,19 +1328,46 @@ void star_tlb::prefetcher_final_stats()
       "transitions:{} edge_allocations:{} edge_reinforcements:{} edge_evictions:{} valid_edges:{} edge_capacity:{} selected:{} "
       "no_edge:{} low_confidence:{} ambiguous:{} prediction_chains:{} predicted_descriptors:{} positive_feedback:{} "
       "negative_feedback:{} stale_feedback:{} candidate_outstanding:{} pending_outstanding:{} interval_ema:{} walk_latency_ema:{} "
-      "lookahead:{} ignored_non_pim:{} missing_context:{} pdq_dispatch:{} pdq_commit:{} pdq_occupancy:{} pdq_stall:{} "
+      "lookahead:{} ignored_non_pim:{} missing_context:{} pdq_capacity:{} pdq_dispatch:{} pdq_commit:{} pdq_occupancy:{} pdq_high_watermark:{} pdq_stall:{} pdq_loss_free:{} "
       "lbq_alloc:{} lbq_pair:{} lbq_unpaired:{} lbq_drop:{} seq_conflict:{} committed_base_lag_avg:{:.2f} "
       "committed_base_lag_max:{}\n",
       descriptors.size(), graph.descriptors_seen, descriptor_cursor, graph.descriptor_mismatch, graph.boundary_triggers, graph.transitions,
       graph.edge_allocations, graph.edge_reinforcements, graph.edge_evictions, valid_edges, EDGE_SETS * EDGE_WAYS, graph.edge_selected,
       graph.no_edge, graph.low_confidence, graph.ambiguous, graph.prediction_chains, graph.predicted_descriptors, graph.positive_feedback,
       graph.negative_feedback, graph.stale_feedback, candidates.size(), pending.size(), pim_interval_ema, walk_latency_ema,
-      static_cast<unsigned>(accuracy_only ? 1 : lookahead_distance()), ignored_non_pim, missing_runtime_context, graph.pdq_dispatches,
-      graph.pdq_commits,
-      pdq.size(), graph.pdq_capacity_stalls, graph.lbq_allocations, graph.lbq_pairs, lbq.size(), graph.lbq_capacity_drops,
+      static_cast<unsigned>(accuracy_only ? 1 : lookahead_distance()), ignored_non_pim, missing_runtime_context, PDQ_ENTRIES,
+      graph.pdq_dispatches, graph.pdq_commits, pdq.size(), graph.pdq_high_watermark, graph.pdq_capacity_stalls,
+      static_cast<unsigned>(graph.pdq_capacity_stalls == 0), graph.lbq_allocations, graph.lbq_pairs, lbq.size(), graph.lbq_capacity_drops,
       graph.pair_sequence_conflicts, average(graph.committed_base_lag_sum, graph.lbq_pairs), graph.committed_base_lag_max);
 
-  if (accuracy_only) {
+  if (graph_oracle_only) {
+    const auto& value = oracle_graph.all;
+    fmt::print(
+        "star_tlb_v2 oracle_graph eligible:{} selected:{} no_edge:{} low_confidence:{} ambiguous:{} address_overflow:{} "
+        "coverage:{:.6f} A_byte_accuracy:{:.6f} B_byte_accuracy:{:.6f} C_byte_accuracy:{:.6f} "
+        "A_vpn_accuracy:{:.6f} B_vpn_accuracy:{:.6f} C_vpn_accuracy:{:.6f} triplet_byte_accuracy:{:.6f} "
+        "triplet_vpn_accuracy:{:.6f} descriptor_accuracy:{:.6f} correct_coverage:{:.6f}\n",
+        oracle_graph.eligible, oracle_graph.selected, oracle_graph.no_edge, oracle_graph.low_confidence, oracle_graph.ambiguous,
+        oracle_graph.address_overflow, average(oracle_graph.selected, oracle_graph.eligible),
+        average(value.byte_correct[ROLE_A], value.resolved), average(value.byte_correct[ROLE_B], value.resolved),
+        average(value.byte_correct[ROLE_C], value.resolved), average(value.vpn_correct[ROLE_A], value.resolved),
+        average(value.vpn_correct[ROLE_B], value.resolved), average(value.vpn_correct[ROLE_C], value.resolved),
+        average(value.triplet_byte_correct, value.resolved), average(value.triplet_vpn_correct, value.resolved),
+        average(value.descriptor_exact, value.resolved), average(value.triplet_vpn_correct, oracle_graph.eligible));
+    for (uint8_t context = 1; context < CONTEXT_COUNT; ++context) {
+      const auto& by_context = oracle_graph.by_actual_context[context];
+      fmt::print(
+          "star_tlb_v2 oracle_graph_context context:{} eligible:{} selected:{} coverage:{:.6f} A_vpn_accuracy:{:.6f} "
+          "B_vpn_accuracy:{:.6f} C_vpn_accuracy:{:.6f} triplet_vpn_accuracy:{:.6f} descriptor_accuracy:{:.6f}\n",
+          context_name(context), oracle_graph.eligible_by_actual_context[context], by_context.resolved,
+          average(by_context.resolved, oracle_graph.eligible_by_actual_context[context]),
+          average(by_context.vpn_correct[ROLE_A], by_context.resolved), average(by_context.vpn_correct[ROLE_B], by_context.resolved),
+          average(by_context.vpn_correct[ROLE_C], by_context.resolved), average(by_context.triplet_vpn_correct, by_context.resolved),
+          average(by_context.descriptor_exact, by_context.resolved));
+    }
+  }
+
+  if (accuracy_only && !graph_oracle_only) {
     const auto eligible = graph.transitions;
     const auto& value = accuracy.primary;
     fmt::print(
