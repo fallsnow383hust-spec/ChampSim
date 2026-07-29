@@ -19,26 +19,28 @@
 
 // STAR-TLB: Semantic Tile-footprint and Affine-Reuse Translation Prefetcher.
 //
-// The simulator receives PIMCFG/PIMGEMM descriptors through the canonical CSV
-// named by STAR_TLB_DESCRIPTOR_CSV. This sideband models fields that are
-// architecturally visible to a real implementation. The binary trace still
-// supplies all demand translations and all dynamic loop branches.
+// Descriptor identity and A/B/C virtual bases are captured from the marked
+// dynamic PIM instruction as it enters the pipeline. No descriptor CSV,
+// reconstructed loop coordinate, or semantic phase label is visible to this
+// prefetcher.
 //
 // RPRG edges are trained atomically for the A/B/C address tuple:
 //
-//   (PIM site, source loop phase)
-//       -> (target loop phase, delta_A, delta_B, delta_C, next tile shape)
+//   (PIM site, opaque source loop context)
+//       -> (opaque target loop context, delta_A, delta_B, delta_C, next tile shape)
 //
-// A selected edge predicts a complete descriptor. The Page Footprint
-// Generator expands the descriptor into exact A/B/C VPN sets. The scheduler
-// uses an adaptive PTW-latency/PIM-interval estimate to issue translations
-// close to, but before, their predicted first use.
+// Loop contexts are learned only from (ASID, branch PC, backward target).
+// A selected edge predicts the complete three-base tuple. Under the current
+// ISA contract only those base VPNs are issued; extending to tile footprints
+// requires the geometry to be carried architecturally as well. The scheduler
+// uses an adaptive PTW-latency/PIM-interval estimate.
 struct star_tlb : public champsim::modules::prefetcher {
   static constexpr uint8_t ROLE_A = 0;
   static constexpr uint8_t ROLE_B = 1;
   static constexpr uint8_t ROLE_C = 2;
   static constexpr uint8_t ROLE_COUNT = 3;
-  static constexpr uint8_t CONTEXT_COUNT = 7;
+  static constexpr std::size_t CONTEXT_COUNT =
+      static_cast<std::size_t>(gemm_runtime_loop_context::runtime_state::MAX_CONTEXTS) + 1;
   static constexpr uint8_t ANY_CONTEXT = 0xff;
 
   struct descriptor {
@@ -288,7 +290,6 @@ struct star_tlb : public champsim::modules::prefetcher {
 
   static_assert((EDGE_SETS & (EDGE_SETS - 1)) == 0);
 
-  std::vector<descriptor> descriptors{};
   std::size_t descriptor_cursor = 0;
   descriptor last_committed_descriptor{};
   uint64_t last_committed_site_tag = 0;
@@ -296,7 +297,6 @@ struct star_tlb : public champsim::modules::prefetcher {
   uint64_t last_committed_descriptor_index = 0;
   uint8_t last_committed_context = 0;
   bool have_last_committed_descriptor = false;
-  bool descriptor_sideband_ready = false;
 
   std::deque<pdq_entry> pdq{};
   std::deque<lbq_entry> lbq{};
@@ -340,13 +340,12 @@ struct star_tlb : public champsim::modules::prefetcher {
   static uint64_t site_key_from_ip(champsim::address ip);
   static uint64_t vpn_from_address(champsim::address addr);
   static std::string_view role_name(uint8_t role);
-  static std::string_view context_name(uint8_t context);
   static bool signed_delta(uint64_t newer, uint64_t older, int64_t& result);
   static bool add_delta(uint64_t address, int64_t delta, uint64_t& result);
   static int8_t saturating_utility(int8_t value, int adjustment);
   static uint64_t ema(uint64_t old_value, uint64_t sample);
 
-  bool load_descriptors(const char* path);
+  static descriptor from_runtime_descriptor(const gemm_runtime_loop_context::pim_descriptor& input);
   std::size_t edge_set_index(uint64_t site_tag, uint8_t source_context) const;
   uint16_t edge_score(const graph_edge& edge) const;
   void touch_edge(std::size_t set, std::size_t way);
@@ -359,12 +358,18 @@ struct star_tlb : public champsim::modules::prefetcher {
 
   static void boundary_callback(uint64_t branch_instr_id, uint8_t target_context);
   static void resolved_branch_callback(const gemm_runtime_loop_context::resolved_backedge_event& event);
-  static void descriptor_dispatch_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
-  static void descriptor_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
+  static void descriptor_dispatch_callback(uint64_t descriptor_index, uint64_t instr_id,
+                                           gemm_runtime_loop_context::asid_type asid, uint8_t context,
+                                           const gemm_runtime_loop_context::pim_descriptor& descriptor);
+  static void descriptor_callback(uint64_t descriptor_index, uint64_t instr_id,
+                                  gemm_runtime_loop_context::asid_type asid, uint8_t context,
+                                  const gemm_runtime_loop_context::pim_descriptor& descriptor);
   void on_loop_boundary(uint64_t branch_instr_id, uint8_t target_context);
   void on_resolved_branch(const gemm_runtime_loop_context::resolved_backedge_event& event);
-  void on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
-  void on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context);
+  void on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_id, uint8_t context,
+                              const descriptor& current);
+  void on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context,
+                            const descriptor& current);
   void pair_boundaries();
   void predict_from_pair(const pdq_entry& source, uint64_t branch_instr_id, uint8_t target_context);
   void evaluate_oracle_graph(uint64_t descriptor_index, uint64_t site_tag, uint8_t context, const descriptor& current);

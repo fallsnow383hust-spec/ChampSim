@@ -37,13 +37,6 @@ std::string_view g_lbtp::role_name(uint8_t role)
   return role < names.size() ? names[role] : "unknown";
 }
 
-std::string_view g_lbtp::context_name(uint8_t context)
-{
-  constexpr std::array<std::string_view, CONTEXT_COUNT> names{
-      "NO_BACKEDGE", "BACKEDGE_1", "BACKEDGE_2", "BACKEDGE_3", "BACKEDGE_4", "BACKEDGE_5", "BACKEDGE_6"};
-  return context < names.size() ? names[context] : "unknown";
-}
-
 bool g_lbtp::signed_delta(uint64_t newer, uint64_t older, int64_t& result)
 {
   if (newer >= older) {
@@ -618,8 +611,9 @@ void g_lbtp::write_event(uint64_t vpn, const pending_entry& prediction, std::str
   const auto late_by = prediction.demand_seen && prediction.fill_seen && prediction.fill_cycle >= prediction.demand_cycle
       ? prediction.fill_cycle - prediction.demand_cycle
       : 0;
-  event_log << prediction.prediction_id << ',' << role_name(prediction.role) << ',' << context_name(prediction.source_context) << ','
-            << context_name(prediction.target_context) << ',' << context_pc(prediction.source_context) << ','
+  event_log << prediction.prediction_id << ',' << role_name(prediction.role) << ','
+            << static_cast<unsigned>(prediction.source_context) << ','
+            << static_cast<unsigned>(prediction.target_context) << ',' << context_pc(prediction.source_context) << ','
             << context_pc(prediction.target_context) << ',' << prediction.byte_delta << ',' << static_cast<unsigned>(prediction.edge_confidence)
             << ',' << prediction.edge_score << ',' << prediction.trigger_address << ',' << vpn << ',' << prediction.issue_cycle << ','
             << prediction.demand_cycle << ',' << prediction.fill_cycle << ',' << outcome << ',' << issue_to_demand << ',' << ready_lead << ','
@@ -667,8 +661,10 @@ void g_lbtp::prefetcher_final_stats()
       EDGE_SETS * EDGE_WAYS, graph.stream_collisions, graph.positive_feedback, graph.negative_feedback, graph.stale_feedback, MAX_PENDING);
 
   for (uint8_t context = 1; context < gemm_runtime_loop_context::state.next_context; ++context)
-    fmt::print("g_lbtp_v1 context {} branch_pc:0x{:x}\n", context_name(context),
-               gemm_runtime_loop_context::state.context_branch_pc[context]);
+    fmt::print("g_lbtp_v1 context_id:{} asid:{} branch_pc:0x{:x} target_pc:0x{:x}\n",
+               static_cast<unsigned>(context), gemm_runtime_loop_context::state.context_asid[context],
+               gemm_runtime_loop_context::state.context_branch_pc[context],
+               gemm_runtime_loop_context::state.context_branch_target[context]);
 
   for (uint8_t context = 0; context < CONTEXT_COUNT; ++context) {
     for (uint8_t role = 0; role < ROLE_COUNT; ++role) {
@@ -676,11 +672,11 @@ void g_lbtp::prefetcher_final_stats()
       if (value.demand_access == 0 && value.graph_lookups == 0 && value.issued == 0)
         continue;
       fmt::print(
-          "g_lbtp_v1 source {} role {} access:{} miss:{} useful_callback:{} graph_lookup:{} no_edge:{} low_confidence:{} ambiguous:{} "
+          "g_lbtp_v1 source_context_id:{} role {} access:{} miss:{} useful_callback:{} graph_lookup:{} no_edge:{} low_confidence:{} ambiguous:{} "
           "selected:{} candidate:{} cross_page:{} same_page:{} resident_filter:{} inflight_filter:{} pending_filter:{} capacity_filter:{} "
           "issued:{} rejected:{} demanded:{} timely:{} late:{} late_completed:{} nonuseful_hit:{} too_early:{} never:{} unresolved_late:{} "
           "issue_to_demand_avg:{:.2f} issue_to_demand_max:{} ready_lead_avg:{:.2f} ready_lead_max:{} late_by_avg:{:.2f} late_by_max:{}\n",
-          context_name(context), role_name(role), value.demand_access, value.demand_miss, value.useful_callback, value.graph_lookups,
+          static_cast<unsigned>(context), role_name(role), value.demand_access, value.demand_miss, value.useful_callback, value.graph_lookups,
           value.graph_no_edge, value.graph_low_confidence, value.graph_ambiguous, value.graph_selected, value.candidates, value.cross_page,
           value.candidates - value.cross_page, value.filtered_resident, value.filtered_inflight, value.filtered_pending, value.filtered_capacity,
           value.issued, value.rejected, value.demanded_after_issue, value.timely, value.late_at_demand, value.late_completed,

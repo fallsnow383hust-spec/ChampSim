@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 from collections import Counter
 from pathlib import Path
 
@@ -34,10 +35,20 @@ def main() -> int:
     parser.add_argument("branch_log", type=Path)
     parser.add_argument("accuracy_log", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--manifest", type=Path)
     args = parser.parse_args()
 
     branches = read_rows(args.branch_log)
     accuracy = read_rows(args.accuracy_log)
+    manifest = (
+        json.loads(args.manifest.read_text(encoding="utf-8"))
+        if args.manifest is not None
+        else {}
+    )
+    offline_identity = {
+        (int(row["branch_pc"], 0), int(row["target_pc"], 0)): row
+        for row in manifest.get("offline_ground_truth", {}).get("loop_identities", [])
+    }
     errors = [row for row in branches if row["outcome"] != "correct"]
     outcomes = Counter(row["outcome"] for row in branches)
     predicted = sum(row["predicted_backedge"] == "1" for row in branches)
@@ -65,6 +76,8 @@ def main() -> int:
 
     lines = [
         "STAR-TLB resolved loop-branch prediction audit",
+        "runtime contexts: opaque IDs; semantic annotations are offline-only",
+        f"control-flow source: {manifest.get('control_flow', {}).get('source', 'unknown')}",
         f"audited branch events: {len(branches)}",
         f"predicted/actual backedges: {predicted}/{actual}",
         f"exact direction+target: {exact}",
@@ -84,24 +97,63 @@ def main() -> int:
     for outcome in ("correct", "false_positive", "false_negative", "wrong_target", "missing_branch_event"):
         lines.append(f"context mismatches linked to {outcome}: {linked[outcome]}")
 
-    contexts = sorted({(row["context"], row["branch_pc"]) for row in branches})
+    counters: dict[tuple[int, int, int, int], Counter[str]] = {}
+
+    def bucket(
+        context: int, asid: int, pc: int, target: int
+    ) -> Counter[str]:
+        key = (context, asid, pc, target)
+        return counters.setdefault(key, Counter())
+
+    for row in branches:
+        asid = int(row["asid"])
+        pc = int(row["branch_pc"])
+        predicted_context = int(row["predicted_context"])
+        actual_context = int(row["actual_context"])
+        predicted_target = int(row["predicted_target"])
+        actual_target = int(row["actual_target"])
+        event_context = actual_context or predicted_context
+        event_target = actual_target if actual_context else predicted_target
+        if event_context:
+            bucket(event_context, asid, pc, event_target)["events"] += 1
+        # A correct first encounter is scored against the resolved identity for
+        # offline accounting, but that newly allocated context was never made
+        # visible to the speculative hardware callback.
+        prediction_context = predicted_context or (
+            actual_context if row["outcome"] == "correct" else 0
+        )
+        if row["predicted_backedge"] == "1" and prediction_context:
+            bucket(prediction_context, asid, pc, actual_target)["predicted"] += 1
+        if row["actual_backedge"] == "1" and actual_context:
+            bucket(actual_context, asid, pc, actual_target)["actual"] += 1
+        if row["outcome"] == "correct" and actual_context:
+            bucket(actual_context, asid, pc, actual_target)["correct"] += 1
+        elif row["outcome"] == "false_positive" and predicted_context:
+            bucket(predicted_context, asid, pc, predicted_target)["false_positive"] += 1
+        elif row["outcome"] == "false_negative" and actual_context:
+            bucket(actual_context, asid, pc, actual_target)["false_negative"] += 1
+        elif row["outcome"] == "wrong_target" and predicted_context:
+            bucket(predicted_context, asid, pc, predicted_target)["wrong_target"] += 1
+
     context_rows: list[dict[str, object]] = []
-    for context, branch_pc in contexts:
-        rows = [row for row in branches if row["context"] == context and row["branch_pc"] == branch_pc]
-        row_outcomes = Counter(row["outcome"] for row in rows)
-        row_predicted = sum(row["predicted_backedge"] == "1" for row in rows)
-        row_actual = sum(row["actual_backedge"] == "1" for row in rows)
-        row_exact = row_outcomes["correct"]
+    for (context, asid, branch_pc, target_pc), values in sorted(counters.items()):
+        identity = offline_identity.get((branch_pc, target_pc), {})
+        row_predicted = values["predicted"]
+        row_actual = values["actual"]
+        row_exact = values["correct"]
         context_rows.append({
-            "context": context,
+            "context_id": context,
+            "asid": asid,
             "branch_pc": branch_pc,
-            "events": len(rows),
+            "target_pc": target_pc,
+            "offline_loop_level": identity.get("loop_level", ""),
+            "events": values["events"],
             "predicted_backedges": row_predicted,
             "actual_backedges": row_actual,
             "correct": row_exact,
-            "false_positive": row_outcomes["false_positive"],
-            "false_negative": row_outcomes["false_negative"],
-            "wrong_target": row_outcomes["wrong_target"],
+            "false_positive": values["false_positive"],
+            "false_negative": values["false_negative"],
+            "wrong_target": values["wrong_target"],
             "precision": ratio(row_exact, row_predicted),
             "recall": ratio(row_exact, row_actual),
         })

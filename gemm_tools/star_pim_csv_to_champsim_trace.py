@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Build a PIM-GEMM trace for STAR-TLB accuracy or performance experiments.
+"""Build the legacy synthetic-control-flow STAR-TLB validation trace.
 
 Each canonical PIMGEMM CSV record is expanded into one demand translation per
 unique 4-KiB page in the strided A/B/C tile footprints. Up to four load pages
-or two store pages share one ChampSim instruction. Synthetic conditional
-branches reproduce the six-level JC/PC/IC/JR/IR/K loop nest without encoding
-loop coordinates in memory PCs.
+or two store pages share one ChampSim instruction.
+
+This converter reconstructs loop outcomes from GEMM dimensions, so its branch
+stream is suitable only for controlled mechanism validation. The simulated
+hardware sees only opaque dynamic branch PC/target/outcome tuples; semantic
+phase names are emitted solely under the manifest's ``offline_ground_truth``.
+Paper generality experiments must replace this trace with real dynamic control
+flow collected from the compiled binary.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ import json
 import lzma
 import re
 import struct
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Iterator
@@ -25,10 +31,9 @@ INSTR_STRUCT = struct.Struct("<QBB2B4B2Q4Q")
 REG_FLAGS = 25
 REG_IP = 26
 ROLE_BITS = 2
-PHASE_BITS = 3
-CONTEXT_BITS = ROLE_BITS + PHASE_BITS
+SITE_ENCODING_BITS = 5
 
-PHASES = {
+GROUND_TRUTH_PHASES = {
     "START": 0,
     "K_PROGRESS": 1,
     "K_TO_IR": 2,
@@ -117,7 +122,7 @@ def reconstructed_phases(args: argparse.Namespace) -> Iterator[str]:
 
 
 def branch_chain(phase: str) -> list[tuple[int, bool]]:
-    code = PHASES[phase]
+    code = GROUND_TRUTH_PHASES[phase]
     if code == 0:
         return []
     target_level = code - 1
@@ -142,6 +147,54 @@ def pack_conditional_branch(ip: int, taken: bool) -> bytes:
         0,
         0,
         0,
+        0,
+        0,
+    )
+
+
+def pack_non_memory(ip: int) -> bytes:
+    """Emit the resolved target instruction after a synthetic taken branch."""
+    return INSTR_STRUCT.pack(
+        ip,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+
+
+def pack_pim_descriptor(
+    ip: int, a_base: int, b_base: int, c_base: int
+) -> bytes:
+    """Encode one architected three-address PIM instruction.
+
+    ChampSim's ordinary trace fields carry the operands: A/B are the first two
+    source virtual addresses and C is the first destination virtual address.
+    """
+    return INSTR_STRUCT.pack(
+        ip,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        c_base,
+        0,
+        a_base,
+        b_base,
         0,
         0,
     )
@@ -235,11 +288,12 @@ def convert(
 ) -> dict:
     phases = iter(reconstructed_phases(args))
     sites: dict[int, int] = {}
-    phase_counts = {name: 0 for name in PHASES}
+    phase_counts = {name: 0 for name in GROUND_TRUTH_PHASES}
     role_page_demands = {"A": 0, "B": 0, "C": 0}
     records = 0
     memory_instructions = 0
     branch_instructions = 0
+    loop_target_instructions = 0
 
     for row_index, row in enumerate(reader):
         if args.max_records and records >= args.max_records:
@@ -255,16 +309,19 @@ def convert(
         phase_counts[phase] += 1
 
         for level, taken in branch_chain(phase):
+            branch_pc = args.branch_pc_base + level * 0x10
             output.write(
-                pack_conditional_branch(
-                    args.branch_pc_base + level * 0x10, taken
-                )
+                pack_conditional_branch(branch_pc, taken)
             )
             branch_instructions += 1
+            if taken:
+                target_pc = args.loop_target_pc_base + level * 0x10
+                output.write(pack_non_memory(target_pc))
+                loop_target_instructions += 1
 
         raw_site = parse_int(row[args.pc_column])
         site_id = sites.setdefault(raw_site, len(sites))
-        ip_base = args.base_pc + (site_id << CONTEXT_BITS)
+        ip_base = args.base_pc + (site_id << SITE_ENCODING_BITS)
 
         valid_m = parse_int(row["valid_m"])
         valid_n = parse_int(row["valid_n"])
@@ -308,18 +365,36 @@ def convert(
                     args.page_bytes,
                 ),
             }
+        a_base = parse_int(row["a_tile_base"])
+        b_base = parse_int(row["b_tile_base"])
+        c_base = parse_int(row["c_tile_base"])
+
+        # This is the only descriptor source consumed by the simulator:
+        # one dynamic instruction carrying the three architected VAs.
+        output.write(
+            pack_pim_descriptor(
+                ip_base | args.pimcfg_marker_bit,
+                a_base,
+                b_base,
+                c_base,
+            )
+        )
+        memory_instructions += 1
+
+        # Full-footprint traces retain the non-base page demands as ordinary
+        # role-coded micro-operations. The carrier already accounts for the
+        # first (base) page of each role.
         memory_instructions += emit_batches(
             output,
             ip_base | 0,
-            role_addresses["A"],
+            role_addresses["A"][1:],
             is_store=False,
-            first_ip=ip_base | args.pimcfg_marker_bit,
         )
         memory_instructions += emit_batches(
-            output, ip_base | 1, role_addresses["B"], is_store=False
+            output, ip_base | 1, role_addresses["B"][1:], is_store=False
         )
         memory_instructions += emit_batches(
-            output, ip_base | 2, role_addresses["C"], is_store=True
+            output, ip_base | 2, role_addresses["C"][1:], is_store=True
         )
         for role, addresses in role_addresses.items():
             role_page_demands[role] += len(addresses)
@@ -348,12 +423,26 @@ def convert(
         "input_pim_records": records,
         "memory_instructions": memory_instructions,
         "branch_instructions": branch_instructions,
+        "loop_target_instructions": loop_target_instructions,
         "simulation_instructions": memory_instructions
-        + branch_instructions,
+        + branch_instructions
+        + loop_target_instructions,
         "translation_demands": sum(role_page_demands.values()),
         "role_page_demands": role_page_demands,
         "static_pim_sites": len(sites),
-        "phase_counts": phase_counts,
+        "offline_ground_truth": {
+            "source": "reconstructed_from_gemm_loop_coordinates",
+            "phase_counts": phase_counts,
+            "phase_codes": GROUND_TRUTH_PHASES,
+            "loop_identities": [
+                {
+                    "loop_level": level,
+                    "branch_pc": hex(args.branch_pc_base + index * 0x10),
+                    "target_pc": hex(args.loop_target_pc_base + index * 0x10),
+                }
+                for index, level in enumerate(LOOP_LEVELS)
+            ],
+        },
     }
 
 
@@ -380,6 +469,12 @@ def main() -> int:
         "--branch-pc-base",
         type=lambda value: int(value, 0),
         default=0x500000,
+    )
+    parser.add_argument(
+        "--loop-target-pc-base",
+        type=lambda value: int(value, 0),
+        default=0x300000,
+        help="synthetic resolved loop-head PC; offline validation only",
     )
     parser.add_argument(
         "--pimcfg-marker-bit",
@@ -416,6 +511,10 @@ def main() -> int:
         or args.pimcfg_marker_bit & ((1 << ROLE_BITS) - 1)
     ):
         raise SystemExit("--pimcfg-marker-bit must not overlap role bits")
+    if args.loop_target_pc_base + (len(LOOP_LEVELS) - 1) * 0x10 >= args.branch_pc_base:
+        raise SystemExit(
+            "synthetic loop targets must be lower than their branch PCs"
+        )
     if (
         args.page_bytes <= 0
         or args.page_bytes & (args.page_bytes - 1)
@@ -456,8 +555,29 @@ def main() -> int:
             "page_bytes": args.page_bytes,
             "ip_encoding": "[pim_site][role:2]",
             "roles": {"A": 0, "B": 1, "C": 2},
-            "phases": PHASES,
             "pimcfg_marker_bit": hex(args.pimcfg_marker_bit),
+            "control_flow": {
+                "source": "synthetic_reconstructed",
+                "paper_valid": False,
+                "semantic_labels_visible_to_prefetcher": False,
+                "hardware_visible_fields": [
+                    "asid",
+                    "branch_pc",
+                    "branch_target",
+                    "taken",
+                ],
+            },
+            "descriptor_source": {
+                "source": "dynamic_pim_instruction_operands",
+                "csv_sideband_visible_to_prefetcher": False,
+                "hardware_visible_fields": [
+                    "asid",
+                    "pim_instruction_pc",
+                    "operand_a_virtual_address",
+                    "operand_b_virtual_address",
+                    "operand_c_virtual_address",
+                ],
+            },
             "shape": {"m": args.m, "n": args.n, "k": args.k},
             "blocking": {
                 "mc": args.mc,
@@ -472,6 +592,10 @@ def main() -> int:
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(
         json.dumps(result, indent=2) + "\n", encoding="utf-8"
+    )
+    print(
+        "WARNING: synthetic reconstructed control flow; use only for mechanism validation, not compiler-generality claims",
+        file=sys.stderr,
     )
     print(json.dumps(result, indent=2))
     return 0

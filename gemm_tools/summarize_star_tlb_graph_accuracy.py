@@ -54,6 +54,19 @@ def main() -> int:
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     expected_eligible = max(0, int(manifest["input_pim_records"]) - 1)
+    offline = manifest.get("offline_ground_truth", {})
+    identity_by_pc = {
+        int(row["branch_pc"], 0): row
+        for row in offline.get("loop_identities", [])
+    }
+    phase_by_level = {
+        "K": "K_PROGRESS",
+        "IR": "K_TO_IR",
+        "JR": "IR_TO_JR",
+        "IC": "JR_TO_IC",
+        "PC": "IC_TO_PC",
+        "JC": "PC_TO_JC",
+    }
     rows = read_rows(args.oracle_log)
     selected = [row for row in rows if row["outcome"] == "selected"]
     outcomes = Counter(row["outcome"] for row in rows)
@@ -69,6 +82,9 @@ def main() -> int:
     lines = [
         "STAR-TLB pure RPRG online Acc@1 report",
         "isolation: true adjacent committed descriptors; actual source/target loop contexts",
+        "runtime contexts: opaque IDs learned from (ASID, branch PC, backward target)",
+        f"control-flow source: {manifest.get('control_flow', {}).get('source', 'unknown')}",
+        f"paper-valid control flow: {manifest.get('control_flow', {}).get('paper_valid', 'unknown')}",
         "bypassed: branch prediction, LBQ, PDQ, translation prefetch issue",
         "anti-leakage order: query -> score actual target -> train target",
         f"trace granularity: {manifest.get('translation_granularity', 'unknown')}",
@@ -103,13 +119,26 @@ def main() -> int:
     ]
 
     context_rows: list[dict[str, object]] = []
-    for context in CONTEXTS:
+    context_loop_pc: dict[str, int] = {}
+    for row in graph_rows:
+        if row["target_context"] != "0" and int(row["target_loop_pc"]) != 0:
+            context_loop_pc.setdefault(
+                row["target_context"], int(row["target_loop_pc"])
+            )
+    contexts = sorted({row["target_context"] for row in rows}, key=int)
+    for context in contexts:
         eligible_rows = [row for row in rows if row["target_context"] == context]
         predictions = [row for row in eligible_rows if row["outcome"] == "selected"]
         correct = sum(row["triplet_vpn_correct"] == "1" for row in predictions)
         low, high = wilson(correct, len(predictions))
+        loop_pc = context_loop_pc.get(context, 0)
+        identity = identity_by_pc.get(loop_pc, {})
+        loop_level = identity.get("loop_level", "")
         context_rows.append({
-            "target_context": context,
+            "target_context_id": int(context),
+            "loop_branch_pc": loop_pc,
+            "offline_loop_level": loop_level,
+            "offline_ground_truth_phase": phase_by_level.get(loop_level, ""),
             "eligible": len(eligible_rows),
             "selected": len(predictions),
             "coverage": ratio(len(predictions), len(eligible_rows)),
@@ -124,7 +153,8 @@ def main() -> int:
     summary = "\n".join(lines) + "\n"
     print(summary, end="")
     (args.output_dir / "rprg-oracle-accuracy-summary.txt").write_text(summary, encoding="utf-8")
-    write_csv(args.output_dir / "rprg-oracle-accuracy-by-context.csv", list(context_rows[0]), context_rows)
+    if context_rows:
+        write_csv(args.output_dir / "rprg-oracle-accuracy-by-context.csv", list(context_rows[0]), context_rows)
     return 0
 
 

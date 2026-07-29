@@ -42,7 +42,6 @@ build_one "${root}/gemm_configs/stlb_star_tlb.json" "${star_bin}"
   --simulation-instructions "${sim_instr}" "${trace}" \
   | tee "${out}/baseline.txt"
 
-STAR_TLB_DESCRIPTOR_CSV="${csv}" \
 STAR_TLB_EVENT_LOG="${out}/star_tlb.prefetch-events.csv" \
 "${star_bin}" --warmup-instructions 0 \
   --simulation-instructions "${sim_instr}" "${trace}" \

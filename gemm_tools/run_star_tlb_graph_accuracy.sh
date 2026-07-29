@@ -32,7 +32,6 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
   cp "${root}/bin/champsim" "${star_bin}"
 fi
 
-STAR_TLB_DESCRIPTOR_CSV="${csv}" \
 STAR_TLB_DESCRIPTOR_LIMIT="${descriptor_count}" \
 STAR_TLB_GRAPH_ORACLE_ONLY=1 \
 STAR_TLB_ORACLE_GRAPH_LOG="${out}/rprg-oracle-acc1-events.csv" \

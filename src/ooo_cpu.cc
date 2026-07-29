@@ -150,12 +150,18 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
     // call code prefetcher every time the branch predictor is used
     l1i->impl_prefetcher_branch_operate(arch_instr.ip, arch_instr.branch, predicted_branch_target);
 
-    // A hardware loop detector can identify a predicted taken backedge at
-    // fetch/decode time. Stamp that runtime context onto following PIM uops;
-    // the STLB later recovers it by dynamic instruction id despite OoO issue.
-    gemm_runtime_loop_context::state.observe_branch(
-        arch_instr.instr_id, arch_instr.ip.to<uint64_t>(), arch_instr.branch_prediction, predicted_branch_target.to<uint64_t>(),
-        arch_instr.branch_taken, arch_instr.branch_target.to<uint64_t>());
+    // Calls and returns are not loop boundaries even when their target happens
+    // to have a lower address. Conditional/other branches and direct jumps are
+    // eligible; the detector itself checks direction and target at runtime.
+    const bool loop_control = arch_instr.branch == BRANCH_CONDITIONAL || arch_instr.branch == BRANCH_OTHER
+        || arch_instr.branch == BRANCH_DIRECT_JUMP;
+    if (loop_control) {
+      const auto address_space_id = static_cast<gemm_runtime_loop_context::asid_type>(
+          (static_cast<uint16_t>(arch_instr.asid[0]) << 8) | static_cast<uint16_t>(arch_instr.asid[1]));
+      gemm_runtime_loop_context::state.predict_branch(
+          arch_instr.instr_id, address_space_id, arch_instr.ip.to<uint64_t>(), arch_instr.branch_prediction,
+          predicted_branch_target.to<uint64_t>());
+    }
 
     if (predicted_branch_target != arch_instr.branch_target
         || (((arch_instr.branch == BRANCH_CONDITIONAL) || (arch_instr.branch == BRANCH_OTHER))
@@ -180,8 +186,25 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
 
 bool O3_CPU::do_init_instruction(ooo_model_instr& arch_instr)
 {
-  gemm_translation_probe::state.on_instruction(arch_instr.instr_id, arch_instr.ip.to<uint64_t>());
-  gemm_runtime_loop_context::state.stamp_instruction(arch_instr.instr_id, arch_instr.ip.to<uint64_t>());
+  const auto raw_ip = arch_instr.ip.to<uint64_t>();
+  const auto address_space_id = static_cast<gemm_runtime_loop_context::asid_type>(
+      (static_cast<uint16_t>(arch_instr.asid[0]) << 8) | static_cast<uint16_t>(arch_instr.asid[1]));
+  gemm_translation_probe::state.on_instruction(arch_instr.instr_id, raw_ip);
+
+  // The trace adapter represents one architected three-address PIM operation
+  // as a marked dynamic instruction with source_memory={A,B} and
+  // destination_memory={C}. These are ordinary instruction operands, not a
+  // CSV sideband or a reconstructed loop label.
+  const bool descriptor_marker = raw_ip >= gemm_runtime_loop_context::runtime_state::PIM_PC_BEGIN
+      && raw_ip < gemm_runtime_loop_context::runtime_state::PIM_PC_END
+      && (raw_ip & gemm_runtime_loop_context::runtime_state::PIMCFG_MARKER_BIT) != 0;
+  const bool descriptor_valid =
+      descriptor_marker && arch_instr.source_memory.size() >= 2 && !arch_instr.destination_memory.empty();
+  gemm_runtime_loop_context::state.stamp_instruction(
+      arch_instr.instr_id, address_space_id, raw_ip, descriptor_valid,
+      descriptor_valid ? arch_instr.source_memory[0].to<uint64_t>() : 0,
+      descriptor_valid ? arch_instr.source_memory[1].to<uint64_t>() : 0,
+      descriptor_valid ? arch_instr.destination_memory[0].to<uint64_t>() : 0);
   // fast warmup eliminates register dependencies between instructions branch predictor, cache contents, and prefetchers are still warmed up
   if (warmup) {
     arch_instr.source_registers.clear();
@@ -630,6 +653,15 @@ void O3_CPU::do_complete_execution(ooo_model_instr& instr)
   }
 
   instr.completed = true;
+
+  const bool loop_control = instr.branch == BRANCH_CONDITIONAL || instr.branch == BRANCH_OTHER
+      || instr.branch == BRANCH_DIRECT_JUMP;
+  if (instr.is_branch && loop_control) {
+    // Actual direction and target become hardware-visible only when the branch
+    // executes; context allocation and predictor correction happen here.
+    gemm_runtime_loop_context::state.resolve_branch(
+        instr.instr_id, instr.branch_taken, instr.branch_target.to<uint64_t>());
+  }
 
   if (instr.branch_mispredicted) {
     fetch_resume_time = current_time + BRANCH_MISPREDICT_PENALTY;

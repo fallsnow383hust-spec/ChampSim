@@ -10,6 +10,7 @@
 
 #include "address.h"
 #include "champsim.h"
+#include "gemm_runtime_loop_context.h"
 #include "modules.h"
 
 // G-LBTP: Graph-based Loop-Boundary Translation Prefetcher.
@@ -130,7 +131,8 @@ struct g_lbtp : public champsim::modules::prefetcher {
   static constexpr std::size_t MAX_PENDING = 64;
   static constexpr uint64_t PENDING_MAX_DEMAND_DISTANCE = 4096;
   static constexpr uint8_t ROLE_COUNT = 3;
-  static constexpr uint8_t CONTEXT_COUNT = 7;
+  static constexpr uint8_t CONTEXT_COUNT =
+      gemm_runtime_loop_context::runtime_state::MAX_CONTEXTS + 1;
   static constexpr uint8_t EDGE_CONFIDENCE_THRESHOLD = 2;
   static constexpr uint16_t EDGE_SCORE_MARGIN = 8;
   static constexpr uint64_t PIM_PC_BEGIN = 0x400000;
@@ -164,7 +166,6 @@ struct g_lbtp : public champsim::modules::prefetcher {
   static uint64_t stream_key_from_ip(champsim::address ip);
   static uint64_t vpn_from_address(champsim::address addr);
   static std::string_view role_name(uint8_t role);
-  static std::string_view context_name(uint8_t context);
   static bool signed_delta(uint64_t newer, uint64_t older, int64_t& result);
   static bool add_delta(uint64_t address, int64_t delta, uint64_t& result);
   static int8_t saturating_utility(int8_t value, int adjustment);

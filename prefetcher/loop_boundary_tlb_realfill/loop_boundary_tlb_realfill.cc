@@ -43,13 +43,6 @@ std::string_view loop_boundary_tlb_realfill::role_name(uint8_t role)
   return role < names.size() ? names[role] : "unknown";
 }
 
-std::string_view loop_boundary_tlb_realfill::phase_name(uint8_t phase)
-{
-  constexpr std::array<std::string_view, PHASE_COUNT> names{
-      "NO_BACKEDGE", "BACKEDGE_1", "BACKEDGE_2", "BACKEDGE_3", "BACKEDGE_4", "BACKEDGE_5", "BACKEDGE_6"};
-  return phase < names.size() ? names[phase] : "unknown";
-}
-
 std::string_view loop_boundary_tlb_realfill::pattern_name(pattern_kind pattern)
 {
   constexpr std::array<std::string_view, PATTERN_COUNT> names{"STEADY", "BOUNDARY_POST", "BOUNDARY_RECURRENCE"};
@@ -355,8 +348,8 @@ void loop_boundary_tlb_realfill::write_event(uint64_t vpn, const pending_entry& 
   const auto late_by = prediction.demand_seen && prediction.fill_seen && prediction.fill_cycle >= prediction.demand_cycle
       ? prediction.fill_cycle - prediction.demand_cycle
       : 0;
-  event_log << prediction.prediction_id << ',' << role_name(prediction.role) << ',' << phase_name(prediction.phase) << ','
-            << pattern_name(prediction.pattern) << ',' << prediction.trigger_address << ',' << vpn << ',' << prediction.issue_cycle << ','
+  event_log << prediction.prediction_id << ',' << role_name(prediction.role) << ',' << static_cast<unsigned>(prediction.phase)
+            << ',' << pattern_name(prediction.pattern) << ',' << prediction.trigger_address << ',' << vpn << ',' << prediction.issue_cycle << ','
             << prediction.demand_cycle << ',' << prediction.fill_cycle << ',' << outcome << ',' << issue_to_demand << ',' << ready_lead << ','
             << late_by << '\n';
 }
@@ -390,8 +383,10 @@ void loop_boundary_tlb_realfill::prefetcher_final_stats()
       gemm_runtime_loop_context::state.correctly_predicted_backedges, gemm_runtime_loop_context::state.missed_backedges,
       gemm_runtime_loop_context::state.false_backedges, gemm_runtime_loop_context::state.context_overflow);
   for (uint8_t context = 1; context < gemm_runtime_loop_context::state.next_context; ++context)
-    fmt::print("loop_boundary_tlb_realfill_v3 context {} branch_pc:0x{:x}\n", phase_name(context),
-               gemm_runtime_loop_context::state.context_branch_pc[context]);
+    fmt::print("loop_boundary_tlb_realfill_v3 context_id:{} asid:{} branch_pc:0x{:x} target_pc:0x{:x}\n",
+               static_cast<unsigned>(context), gemm_runtime_loop_context::state.context_asid[context],
+               gemm_runtime_loop_context::state.context_branch_pc[context],
+               gemm_runtime_loop_context::state.context_branch_target[context]);
 
   for (uint8_t index = 0; index < PATTERN_COUNT; ++index) {
     const auto pattern = static_cast<pattern_kind>(index);
@@ -413,11 +408,11 @@ void loop_boundary_tlb_realfill::prefetcher_final_stats()
       if (value.demand_access == 0 && value.candidates == 0 && value.issued == 0)
         continue;
       fmt::print(
-          "loop_boundary_tlb_realfill_v3 phase {} role {} access:{} miss:{} useful_callback:{} candidate:{} cross_page:{} same_page:{} "
+          "loop_boundary_tlb_realfill_v3 context_id:{} role {} access:{} miss:{} useful_callback:{} candidate:{} cross_page:{} same_page:{} "
           "resident_filter:{} inflight_filter:{} pending_filter:{} issued:{} rejected:{} demanded:{} timely:{} late:{} late_completed:{} "
           "nonuseful_hit:{} too_early:{} never:{} unresolved_late:{} issue_to_demand_avg:{:.2f} issue_to_demand_max:{} "
           "ready_lead_avg:{:.2f} ready_lead_max:{} late_by_avg:{:.2f} late_by_max:{}\n",
-          phase_name(phase), role_name(role), value.demand_access, value.demand_miss, value.useful_callback, value.candidates, value.cross_page,
+          static_cast<unsigned>(phase), role_name(role), value.demand_access, value.demand_miss, value.useful_callback, value.candidates, value.cross_page,
           value.candidates - value.cross_page, value.filtered_resident, value.filtered_inflight, value.filtered_pending, value.issued, value.rejected,
           value.demanded_after_issue, value.timely, value.late_at_demand, value.late_completed, value.nonuseful_hit, value.too_early,
           value.never_demanded, value.unresolved_late, average(value.issue_to_demand_sum, value.demanded_after_issue), value.issue_to_demand_max,

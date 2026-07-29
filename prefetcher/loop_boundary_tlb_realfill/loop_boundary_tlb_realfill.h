@@ -11,6 +11,7 @@
 
 #include "address.h"
 #include "champsim.h"
+#include "gemm_runtime_loop_context.h"
 #include "modules.h"
 
 struct loop_boundary_tlb_realfill : public champsim::modules::prefetcher {
@@ -79,7 +80,8 @@ struct loop_boundary_tlb_realfill : public champsim::modules::prefetcher {
 
   static constexpr std::size_t TRACKER_ENTRIES = 4096;
   static constexpr uint8_t ROLE_COUNT = 3;
-  static constexpr uint8_t PHASE_COUNT = 7;
+  static constexpr uint8_t PHASE_COUNT =
+      gemm_runtime_loop_context::runtime_state::MAX_CONTEXTS + 1;
   static constexpr uint8_t PATTERN_COUNT = 3;
   static constexpr uint8_t STEADY_CONFIDENCE = 2;
   static constexpr uint8_t BOUNDARY_CONFIDENCE = 1;
@@ -108,7 +110,6 @@ struct loop_boundary_tlb_realfill : public champsim::modules::prefetcher {
   static uint64_t base_key_from_ip(champsim::address ip);
   static uint64_t vpn_from_address(champsim::address addr);
   static std::string_view role_name(uint8_t role);
-  static std::string_view phase_name(uint8_t phase);
   static std::string_view pattern_name(pattern_kind pattern);
   static void update_stride(stride_state& state, int64_t stride);
 

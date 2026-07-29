@@ -21,25 +21,6 @@ uint64_t as_u64(AddressSlice addr)
   return addr.template to<uint64_t>();
 }
 
-std::vector<std::string> split_csv(const std::string& line)
-{
-  std::vector<std::string> result;
-  std::string field;
-  bool quoted = false;
-  for (char ch : line) {
-    if (ch == '"') {
-      quoted = !quoted;
-    } else if (ch == ',' && !quoted) {
-      result.push_back(field);
-      field.clear();
-    } else {
-      field.push_back(ch);
-    }
-  }
-  result.push_back(field);
-  return result;
-}
-
 uint64_t parse_u64(const std::string& value)
 {
   std::size_t consumed = 0;
@@ -81,13 +62,6 @@ std::string_view star_tlb::role_name(uint8_t role)
 {
   constexpr std::array<std::string_view, ROLE_COUNT> names{"A", "B", "C"};
   return role < names.size() ? names[role] : "unknown";
-}
-
-std::string_view star_tlb::context_name(uint8_t context)
-{
-  constexpr std::array<std::string_view, CONTEXT_COUNT> names{
-      "NO_BACKEDGE", "K_PROGRESS", "K_TO_IR", "IR_TO_JR", "JR_TO_IC", "IC_TO_PC", "PC_TO_JC"};
-  return context < names.size() ? names[context] : "unknown";
 }
 
 bool star_tlb::signed_delta(uint64_t newer, uint64_t older, int64_t& result)
@@ -133,77 +107,14 @@ uint64_t star_tlb::ema(uint64_t old_value, uint64_t sample)
   return std::max<uint64_t>(1, (7 * old_value + sample) / 8);
 }
 
-bool star_tlb::load_descriptors(const char* path)
+star_tlb::descriptor star_tlb::from_runtime_descriptor(const gemm_runtime_loop_context::pim_descriptor& input)
 {
-  std::ifstream input{path};
-  if (!input) {
-    fmt::print("star_tlb_v1 error unable_to_open_descriptor_csv:{}\n", path);
-    return false;
-  }
-
-  std::string line;
-  if (!std::getline(input, line))
-    return false;
-  auto header = split_csv(line);
-  if (!header.empty() && header.front().size() >= 3 && static_cast<unsigned char>(header.front()[0]) == 0xef
-      && static_cast<unsigned char>(header.front()[1]) == 0xbb && static_cast<unsigned char>(header.front()[2]) == 0xbf)
-    header.front().erase(0, 3);
-
-  std::unordered_map<std::string, std::size_t> column;
-  for (std::size_t index = 0; index < header.size(); ++index)
-    column.emplace(header[index], index);
-
-  const char* pc_column = column.find("pim_pc") != column.end()
-      ? "pim_pc"
-      : (column.find("pim_site_pc") != column.end() ? "pim_site_pc" : nullptr);
-  if (pc_column == nullptr) {
-    fmt::print("star_tlb_v1 error missing_descriptor_column:pim_pc_or_pim_site_pc\n");
-    return false;
-  }
-  const std::array required{"a_tile_base", "b_tile_base", "c_tile_base", "a_row_stride_bytes",
-                            "b_row_stride_bytes", "c_row_stride_bytes", "valid_m", "valid_n", "valid_k", "flags"};
-  for (const auto* name : required) {
-    if (column.find(name) == column.end()) {
-      fmt::print("star_tlb_v1 error missing_descriptor_column:{}\n", name);
-      return false;
-    }
-  }
-
-  std::size_t row = 1;
-  while ((descriptor_limit == 0 || descriptors.size() < descriptor_limit) && std::getline(input, line)) {
-    ++row;
-    if (line.empty())
-      continue;
-    const auto values = split_csv(line);
-    const auto value = [&](const char* name) -> const std::string& {
-      const auto index = column.at(name);
-      if (index >= values.size())
-        throw std::out_of_range{"short CSV row"};
-      return values[index];
-    };
-    try {
-      descriptor desc{};
-      desc.raw_site_pc = parse_u64(value(pc_column));
-      desc.a_base = parse_u64(value("a_tile_base"));
-      desc.b_base = parse_u64(value("b_tile_base"));
-      desc.c_base = parse_u64(value("c_tile_base"));
-      desc.lda = parse_u64(value("a_row_stride_bytes"));
-      desc.ldb = parse_u64(value("b_row_stride_bytes"));
-      desc.ldc = parse_u64(value("c_row_stride_bytes"));
-      desc.valid_m = static_cast<uint8_t>(parse_u64(value("valid_m")));
-      desc.valid_n = static_cast<uint8_t>(parse_u64(value("valid_n")));
-      desc.valid_k = static_cast<uint8_t>(parse_u64(value("valid_k")));
-      desc.flags = static_cast<uint8_t>(parse_u64(value("flags")));
-      if (desc.lda == 0 || desc.ldb == 0 || desc.ldc == 0 || desc.valid_m == 0 || desc.valid_m > 32 || desc.valid_n == 0
-          || desc.valid_n > 32 || desc.valid_k == 0 || desc.valid_k > 32)
-        throw std::invalid_argument{"invalid PIM descriptor"};
-      descriptors.push_back(desc);
-    } catch (const std::exception& error) {
-      fmt::print("star_tlb_v1 error descriptor_row:{} reason:{}\n", row, error.what());
-      return false;
-    }
-  }
-  return !descriptors.empty();
+  descriptor result{};
+  result.raw_site_pc = input.site_pc;
+  result.a_base = input.a_base;
+  result.b_base = input.b_base;
+  result.c_base = input.c_base;
+  return result;
 }
 
 std::size_t star_tlb::edge_set_index(uint64_t site_tag, uint8_t source_context) const
@@ -238,9 +149,21 @@ void star_tlb::write_graph_event(std::string_view operation, std::size_t set, in
         ? gemm_runtime_loop_context::state.context_branch_pc[context]
         : uint64_t{0};
   };
+  const auto context_target = [](uint8_t context) {
+    return context < gemm_runtime_loop_context::state.context_branch_target.size()
+        ? gemm_runtime_loop_context::state.context_branch_target[context]
+        : uint64_t{0};
+  };
+  const auto context_asid = [](uint8_t context) {
+    return context < gemm_runtime_loop_context::state.context_asid.size()
+        ? gemm_runtime_loop_context::state.context_asid[context]
+        : gemm_runtime_loop_context::asid_type{0};
+  };
   graph_log << current_cycle << ',' << operation << ',' << set << ',' << way << ',' << site_tag << ','
-            << context_name(source_context) << ',' << context_name(target_context) << ',' << context_pc(source_context) << ','
-            << context_pc(target_context) << ',';
+            << static_cast<unsigned>(source_context) << ',' << static_cast<unsigned>(target_context) << ','
+            << context_asid(source_context) << ',' << context_asid(target_context) << ','
+            << context_pc(source_context) << ',' << context_pc(target_context) << ','
+            << context_target(source_context) << ',' << context_target(target_context) << ',';
   if (edge == nullptr) {
     graph_log << "0,0,0,0,0,0,0,0,0,";
   } else {
@@ -255,6 +178,12 @@ void star_tlb::write_graph_event(std::string_view operation, std::size_t set, in
 void star_tlb::train_edge(uint64_t site_tag, uint8_t source_context, uint8_t target_context, const descriptor& previous,
                           const descriptor& current)
 {
+  // Context zero has no learned (ASID, branch PC, target) identity. Never let
+  // this anonymous cold-start state create an edge that could alias across
+  // address spaces.
+  if (source_context == 0 || target_context == 0)
+    return;
+
   std::array<int64_t, ROLE_COUNT> delta{};
   if (!signed_delta(current.a_base, previous.a_base, delta[ROLE_A])
       || !signed_delta(current.b_base, previous.b_base, delta[ROLE_B])
@@ -449,26 +378,27 @@ void star_tlb::resolved_branch_callback(const gemm_runtime_loop_context::resolve
     active_instance->on_resolved_branch(event);
 }
 
-void star_tlb::descriptor_dispatch_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
+void star_tlb::descriptor_dispatch_callback(uint64_t descriptor_index, uint64_t instr_id,
+                                            gemm_runtime_loop_context::asid_type, uint8_t context,
+                                            const gemm_runtime_loop_context::pim_descriptor& descriptor)
 {
   if (active_instance != nullptr)
-    active_instance->on_descriptor_dispatch(descriptor_index, instr_id, context);
+    active_instance->on_descriptor_dispatch(descriptor_index, instr_id, context, from_runtime_descriptor(descriptor));
 }
 
-void star_tlb::descriptor_callback(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
+void star_tlb::descriptor_callback(uint64_t descriptor_index, uint64_t instr_id,
+                                   gemm_runtime_loop_context::asid_type, uint8_t context,
+                                   const gemm_runtime_loop_context::pim_descriptor& descriptor)
 {
   if (active_instance != nullptr)
-    active_instance->on_descriptor_marker(descriptor_index, instr_id, context);
+    active_instance->on_descriptor_marker(descriptor_index, instr_id, context, from_runtime_descriptor(descriptor));
 }
 
-void star_tlb::on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
+void star_tlb::on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_id, uint8_t context,
+                                      const descriptor& current)
 {
-  if (!descriptor_sideband_ready)
+  if (descriptor_limit != 0 && descriptor_index >= descriptor_limit)
     return;
-  if (descriptor_index >= descriptors.size()) {
-    ++graph.descriptor_mismatch;
-    return;
-  }
   if (std::any_of(pdq.begin(), pdq.end(), [instr_id](const auto& entry) { return entry.instr_id == instr_id; }))
     return;
 
@@ -485,7 +415,7 @@ void star_tlb::on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_
   }
 
   pdq_entry entry{};
-  entry.value = descriptors[descriptor_index];
+  entry.value = current;
   entry.descriptor_index = descriptor_index;
   entry.instr_id = instr_id;
   entry.dispatch_cycle = current_cycle;
@@ -496,18 +426,14 @@ void star_tlb::on_descriptor_dispatch(uint64_t descriptor_index, uint64_t instr_
   pair_boundaries();
 }
 
-void star_tlb::on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context)
+void star_tlb::on_descriptor_marker(uint64_t descriptor_index, uint64_t instr_id, uint8_t context,
+                                    const descriptor& current)
 {
-  if (!descriptor_sideband_ready)
+  if (descriptor_limit != 0 && descriptor_index >= descriptor_limit)
     return;
-  if (descriptor_index >= descriptors.size()) {
-    ++graph.descriptor_mismatch;
-    return;
-  }
   if (descriptor_index != descriptor_cursor)
     ++graph.descriptor_mismatch;
   descriptor_cursor = static_cast<std::size_t>(descriptor_index + 1);
-  const auto& current = descriptors[descriptor_index];
 
   if (!graph_oracle_only) {
     const auto pdq_match = std::find_if(pdq.begin(), pdq.end(), [descriptor_index, instr_id](const auto& entry) {
@@ -575,12 +501,6 @@ void star_tlb::record_accuracy_prediction(const pdq_entry& source, uint64_t bran
   record.primary_for_target = accuracy_primary_targets.insert(record.target_descriptor_index).second;
   if (!record.primary_for_target)
     ++accuracy.duplicate_targets;
-
-  if (record.target_descriptor_index >= descriptors.size()) {
-    ++accuracy.out_of_range;
-    write_accuracy_event(record, 0, nullptr, "out_of_range");
-    return;
-  }
 
   ++accuracy.all.predictions;
   if (record.primary_for_target)
@@ -701,8 +621,9 @@ void star_tlb::write_accuracy_event(const accuracy_record& prediction, uint8_t a
   accuracy_log << prediction.prediction_id << ',' << static_cast<unsigned>(prediction.primary_for_target) << ','
                << prediction.source_descriptor_index << ',' << prediction.target_descriptor_index << ','
                << prediction.source_instr_id << ',' << prediction.branch_instr_id << ',' << prediction.prediction_cycle << ','
-               << context_name(prediction.source_context) << ',' << context_name(prediction.predicted_context) << ','
-               << (actual == nullptr ? "NONE" : context_name(actual_context)) << ',' << prediction.loop_branch_pc << ','
+               << static_cast<unsigned>(prediction.source_context) << ','
+               << static_cast<unsigned>(prediction.predicted_context) << ','
+               << (actual == nullptr ? std::string{"NONE"} : std::to_string(actual_context)) << ',' << prediction.loop_branch_pc << ','
                << (actual == nullptr || actual_context >= gemm_runtime_loop_context::state.context_branch_pc.size()
                        ? uint64_t{0}
                        : gemm_runtime_loop_context::state.context_branch_pc[actual_context])
@@ -759,14 +680,24 @@ void star_tlb::on_resolved_branch(const gemm_runtime_loop_context::resolved_back
   branch_audit.false_positive += static_cast<uint64_t>(false_positive);
   branch_audit.false_negative += static_cast<uint64_t>(false_negative);
 
-  if (event.context < CONTEXT_COUNT) {
-    ++branch_audit.events_by_context[event.context];
-    branch_audit.predicted_by_context[event.context] += static_cast<uint64_t>(event.predicted_backedge);
-    branch_audit.actual_by_context[event.context] += static_cast<uint64_t>(event.actual_backedge);
-    branch_audit.exact_by_context[event.context] += static_cast<uint64_t>(exact);
-    branch_audit.wrong_target_by_context[event.context] += static_cast<uint64_t>(wrong_target);
-    branch_audit.false_positive_by_context[event.context] += static_cast<uint64_t>(false_positive);
-    branch_audit.false_negative_by_context[event.context] += static_cast<uint64_t>(false_negative);
+  // Per-context counters are an offline audit only. Correct first encounters
+  // are attributed to the resolved identity even though prediction was not
+  // allowed to consume that not-yet-trained context.
+  const auto predicted_bucket = event.predicted_context != 0
+      ? event.predicted_context
+      : (exact ? event.actual_context : uint8_t{0});
+  const auto event_bucket = event.actual_context != 0 ? event.actual_context : predicted_bucket;
+  if (event_bucket != 0 && event_bucket < CONTEXT_COUNT)
+    ++branch_audit.events_by_context[event_bucket];
+  if (predicted_bucket != 0 && predicted_bucket < CONTEXT_COUNT) {
+    branch_audit.predicted_by_context[predicted_bucket] += static_cast<uint64_t>(event.predicted_backedge);
+    branch_audit.wrong_target_by_context[predicted_bucket] += static_cast<uint64_t>(wrong_target);
+    branch_audit.false_positive_by_context[predicted_bucket] += static_cast<uint64_t>(false_positive);
+  }
+  if (event.actual_context != 0 && event.actual_context < CONTEXT_COUNT) {
+    branch_audit.actual_by_context[event.actual_context] += static_cast<uint64_t>(event.actual_backedge);
+    branch_audit.exact_by_context[event.actual_context] += static_cast<uint64_t>(exact);
+    branch_audit.false_negative_by_context[event.actual_context] += static_cast<uint64_t>(false_negative);
   }
 
   if (!branch_log)
@@ -778,10 +709,12 @@ void star_tlb::on_resolved_branch(const gemm_runtime_loop_context::resolved_back
     outcome = "wrong_target";
   else if (false_positive)
     outcome = "false_positive";
-  branch_log << event.instr_id << ',' << event.branch_pc << ',' << context_name(event.context) << ','
+  branch_log << event.instr_id << ',' << event.asid << ',' << event.branch_pc << ','
+             << static_cast<unsigned>(event.predicted_context) << ',' << static_cast<unsigned>(event.actual_context) << ','
              << static_cast<unsigned>(event.predicted_taken) << ',' << event.predicted_target << ','
              << static_cast<unsigned>(event.actual_taken) << ',' << event.actual_target << ','
-             << static_cast<unsigned>(event.predicted_backedge) << ',' << static_cast<unsigned>(event.actual_backedge) << ','
+             << static_cast<unsigned>(event.predicted_backedge) << ','
+             << static_cast<unsigned>(event.actual_backedge) << ','
              << static_cast<unsigned>(event.predicted_taken == event.actual_taken) << ','
              << static_cast<unsigned>(target_match) << ',' << outcome << '\n';
 }
@@ -911,7 +844,8 @@ void star_tlb::evaluate_oracle_graph(uint64_t descriptor_index, uint64_t site_ta
       && guess.valid_n == current.valid_n && guess.valid_k == current.valid_k && guess.flags == current.flags;
 
   oracle_graph_log << last_committed_descriptor_index << ',' << descriptor_index << ','
-                   << context_name(last_committed_context) << ',' << context_name(context) << ',' << outcome << ','
+                   << static_cast<unsigned>(last_committed_context) << ',' << static_cast<unsigned>(context) << ','
+                   << outcome << ','
                    << edge.set << ',' << static_cast<unsigned>(edge.way) << ',' << edge.generation << ','
                    << static_cast<unsigned>(edge.confidence) << ',' << edge.score << ','
                    << guess.a_base << ',' << current.a_base << ',' << static_cast<unsigned>(a_byte) << ','
@@ -967,6 +901,10 @@ std::vector<uint64_t> star_tlb::footprint(const descriptor& desc, uint8_t role) 
   default:
     return {};
   }
+
+  // Current ISA contract exposes only the three base virtual addresses.
+  if (stride == 0 || rows == 0 || width == 0)
+    return {base >> LOG2_PAGE_SIZE};
 
   std::vector<uint64_t> pages;
   std::unordered_set<uint64_t> seen;
@@ -1175,7 +1113,6 @@ void star_tlb::expire_entries()
 
 void star_tlb::prefetcher_initialize()
 {
-  descriptors.clear();
   descriptor_cursor = 0;
   pdq.clear();
   lbq.clear();
@@ -1207,8 +1144,6 @@ void star_tlb::prefetcher_initialize()
   have_last_committed_descriptor = false;
   finalized = false;
 
-  const auto* descriptor_path = std::getenv("STAR_TLB_DESCRIPTOR_CSV");
-  descriptor_sideband_ready = descriptor_path != nullptr && *descriptor_path != '\0' && load_descriptors(descriptor_path);
   gemm_runtime_loop_context::state.reset();
   active_instance = this;
   gemm_runtime_loop_context::predicted_backedge_observer = graph_oracle_only ? nullptr : &star_tlb::boundary_callback;
@@ -1247,8 +1182,9 @@ void star_tlb::prefetcher_initialize()
   if (const auto* path = std::getenv("STAR_TLB_GRAPH_LOG"); path != nullptr && *path != '\0') {
     graph_log.open(path, std::ios::out | std::ios::trunc);
     if (graph_log)
-      graph_log << "cycle,operation,set,way,site_tag,source_context,target_context,source_loop_pc,target_loop_pc,delta_a,delta_b,delta_c,confidence,"
-                   "occurrences,usefulness,lru,generation,valid,score\n";
+      graph_log << "cycle,operation,set,way,site_tag,source_context,target_context,source_asid,target_asid,"
+                   "source_loop_pc,target_loop_pc,source_loop_target,target_loop_target,delta_a,delta_b,delta_c,"
+                   "confidence,occurrences,usefulness,lru,generation,valid,score\n";
   }
   if (const auto* path = std::getenv("STAR_TLB_ORACLE_GRAPH_LOG"); path != nullptr && *path != '\0') {
     oracle_graph_log.open(path, std::ios::out | std::ios::trunc);
@@ -1261,12 +1197,13 @@ void star_tlb::prefetcher_initialize()
   if (const auto* path = std::getenv("STAR_TLB_BRANCH_LOG"); path != nullptr && *path != '\0') {
     branch_log.open(path, std::ios::out | std::ios::trunc);
     if (branch_log)
-      branch_log << "branch_instr_id,branch_pc,context,predicted_taken,predicted_target,actual_taken,actual_target,"
-                    "predicted_backedge,actual_backedge,direction_correct,target_match,outcome\n";
+      branch_log << "branch_instr_id,asid,branch_pc,predicted_context,actual_context,predicted_taken,predicted_target,"
+                    "actual_taken,actual_target,predicted_backedge,actual_backedge,direction_correct,target_match,"
+                    "outcome\n";
   }
-  fmt::print("star_tlb_v2 initialize descriptors:{} sideband_ready:{} accuracy_only:{} graph_oracle_only:{} descriptor_limit:{} "
+  fmt::print("star_tlb_v2 initialize descriptor_source:dynamic_pim_operands accuracy_only:{} graph_oracle_only:{} descriptor_limit:{} "
              "interval_seed:{} walk_seed:{} max_lookahead:{} pdq:{} lbq:{}\n",
-             descriptors.size(), descriptor_sideband_ready, accuracy_only, graph_oracle_only, descriptor_limit, pim_interval_ema,
+             accuracy_only, graph_oracle_only, descriptor_limit, pim_interval_ema,
              walk_latency_ema, MAX_LOOKAHEAD, PDQ_ENTRIES, LBQ_ENTRIES);
 }
 
@@ -1282,7 +1219,9 @@ uint32_t star_tlb::prefetcher_cache_operate(champsim::address addr, champsim::ad
     return metadata_in;
   }
 
-  const auto role = role_from_ip(ip);
+  const auto dynamic_role =
+      gemm_runtime_loop_context::state.operand_role_for(instr_id, as_u64(full_addr));
+  const auto role = dynamic_role.value_or(role_from_ip(ip));
   if (role >= ROLE_COUNT)
     return metadata_in;
   ++demand_seq;
@@ -1351,8 +1290,9 @@ void star_tlb::write_event(uint64_t vpn, const pending_entry& prediction, std::s
   const auto late_by = prediction.demand_seen && prediction.fill_seen && prediction.fill_cycle >= prediction.demand_cycle
       ? prediction.fill_cycle - prediction.demand_cycle
       : 0;
-  event_log << prediction.prediction_id << ',' << role_name(prediction.role) << ',' << context_name(prediction.source_context) << ','
-            << context_name(prediction.target_context) << ',' << static_cast<unsigned>(prediction.distance) << ','
+  event_log << prediction.prediction_id << ',' << role_name(prediction.role) << ','
+            << static_cast<unsigned>(prediction.source_context) << ','
+            << static_cast<unsigned>(prediction.target_context) << ',' << static_cast<unsigned>(prediction.distance) << ','
             << static_cast<unsigned>(prediction.reuse_count) << ',' << static_cast<unsigned>(prediction.edge_confidence) << ','
             << prediction.edge_score << ',' << vpn << ',' << prediction.created_cycle << ',' << prediction.ready_cycle << ','
             << prediction.target_cycle << ',' << prediction.issue_cycle << ',' << prediction.demand_cycle << ',' << prediction.fill_cycle << ','
@@ -1385,14 +1325,15 @@ void star_tlb::prefetcher_final_stats()
     valid_edges += std::count_if(set.begin(), set.end(), [](const auto& edge) { return edge.valid; });
 
   fmt::print(
-      "star_tlb_v2 graph descriptors_loaded:{} descriptors_seen:{} descriptor_cursor:{} descriptor_mismatch:{} boundary_triggers:{} "
+      "star_tlb_v2 graph descriptor_source:dynamic_pim_operands descriptors_seen:{} descriptor_cursor:{} descriptor_mismatch:{} malformed_descriptor:{} boundary_triggers:{} "
       "transitions:{} edge_allocations:{} edge_reinforcements:{} edge_evictions:{} valid_edges:{} edge_sets:{} edge_ways:{} edge_capacity:{} selected:{} "
       "no_edge:{} low_confidence:{} ambiguous:{} prediction_chains:{} predicted_descriptors:{} positive_feedback:{} "
       "negative_feedback:{} stale_feedback:{} candidate_outstanding:{} pending_outstanding:{} interval_ema:{} walk_latency_ema:{} "
       "lookahead:{} ignored_non_pim:{} missing_context:{} pdq_capacity:{} pdq_dispatch:{} pdq_commit:{} pdq_occupancy:{} pdq_high_watermark:{} pdq_stall:{} pdq_loss_free:{} "
       "lbq_alloc:{} lbq_pair:{} lbq_unpaired:{} lbq_drop:{} seq_conflict:{} committed_base_lag_avg:{:.2f} "
       "committed_base_lag_max:{}\n",
-      descriptors.size(), graph.descriptors_seen, descriptor_cursor, graph.descriptor_mismatch, graph.boundary_triggers, graph.transitions,
+      graph.descriptors_seen, descriptor_cursor, graph.descriptor_mismatch,
+      gemm_runtime_loop_context::state.malformed_descriptors, graph.boundary_triggers, graph.transitions,
       graph.edge_allocations, graph.edge_reinforcements, graph.edge_evictions, valid_edges, EDGE_SETS, EDGE_WAYS,
       EDGE_SETS * EDGE_WAYS, graph.edge_selected,
       graph.no_edge, graph.low_confidence, graph.ambiguous, graph.prediction_chains, graph.predicted_descriptors, graph.positive_feedback,
@@ -1401,6 +1342,17 @@ void star_tlb::prefetcher_final_stats()
       graph.pdq_dispatches, graph.pdq_commits, pdq.size(), graph.pdq_high_watermark, graph.pdq_capacity_stalls,
       static_cast<unsigned>(graph.pdq_capacity_stalls == 0), graph.lbq_allocations, graph.lbq_pairs, lbq.size(), graph.lbq_capacity_drops,
       graph.pair_sequence_conflicts, average(graph.committed_base_lag_sum, graph.lbq_pairs), graph.committed_base_lag_max);
+
+  fmt::print(
+      "star_tlb_v2 runtime predicted_backedges:{} actual_backedges:{} correct_backedges:{} "
+      "missed_backedges:{} false_backedges:{} pending_branch_resolutions:{} context_overflow:{}\n",
+      gemm_runtime_loop_context::state.predicted_backedges,
+      gemm_runtime_loop_context::state.actual_backedges,
+      gemm_runtime_loop_context::state.correctly_predicted_backedges,
+      gemm_runtime_loop_context::state.missed_backedges,
+      gemm_runtime_loop_context::state.false_backedges,
+      gemm_runtime_loop_context::state.pending_branches.size(),
+      gemm_runtime_loop_context::state.context_overflow);
 
   if (graph_oracle_only) {
     const auto& value = oracle_graph.all;
@@ -1416,12 +1368,12 @@ void star_tlb::prefetcher_final_stats()
         average(value.vpn_correct[ROLE_B], value.resolved), average(value.vpn_correct[ROLE_C], value.resolved),
         average(value.triplet_byte_correct, value.resolved), average(value.triplet_vpn_correct, value.resolved),
         average(value.descriptor_exact, value.resolved), average(value.triplet_vpn_correct, oracle_graph.eligible));
-    for (uint8_t context = 1; context < CONTEXT_COUNT; ++context) {
+    for (uint8_t context = 1; context < gemm_runtime_loop_context::state.next_context; ++context) {
       const auto& by_context = oracle_graph.by_actual_context[context];
       fmt::print(
-          "star_tlb_v2 oracle_graph_context context:{} eligible:{} selected:{} coverage:{:.6f} A_vpn_accuracy:{:.6f} "
+          "star_tlb_v2 oracle_graph_context context_id:{} eligible:{} selected:{} coverage:{:.6f} A_vpn_accuracy:{:.6f} "
           "B_vpn_accuracy:{:.6f} C_vpn_accuracy:{:.6f} triplet_vpn_accuracy:{:.6f} descriptor_accuracy:{:.6f}\n",
-          context_name(context), oracle_graph.eligible_by_actual_context[context], by_context.resolved,
+          static_cast<unsigned>(context), oracle_graph.eligible_by_actual_context[context], by_context.resolved,
           average(by_context.resolved, oracle_graph.eligible_by_actual_context[context]),
           average(by_context.vpn_correct[ROLE_A], by_context.resolved), average(by_context.vpn_correct[ROLE_B], by_context.resolved),
           average(by_context.vpn_correct[ROLE_C], by_context.resolved), average(by_context.triplet_vpn_correct, by_context.resolved),
@@ -1436,11 +1388,14 @@ void star_tlb::prefetcher_final_stats()
         branch_audit.events, branch_audit.predicted, branch_audit.actual, branch_audit.exact, branch_audit.false_positive,
         branch_audit.false_negative, branch_audit.wrong_target, average(branch_audit.exact, branch_audit.predicted),
         average(branch_audit.exact, branch_audit.actual));
-    for (uint8_t context = 1; context < CONTEXT_COUNT; ++context) {
+    for (uint8_t context = 1; context < gemm_runtime_loop_context::state.next_context; ++context) {
       fmt::print(
-          "star_tlb_v2 branch_audit_context context:{} branch_pc:0x{:x} events:{} predicted:{} actual:{} exact:{} "
+          "star_tlb_v2 branch_audit_context context_id:{} asid:{} branch_pc:0x{:x} target_pc:0x{:x} "
+          "events:{} predicted:{} actual:{} exact:{} "
           "false_positive:{} false_negative:{} wrong_target:{} precision:{:.6f} recall:{:.6f}\n",
-          context_name(context), gemm_runtime_loop_context::state.context_branch_pc[context],
+          static_cast<unsigned>(context), gemm_runtime_loop_context::state.context_asid[context],
+          gemm_runtime_loop_context::state.context_branch_pc[context],
+          gemm_runtime_loop_context::state.context_branch_target[context],
           branch_audit.events_by_context[context], branch_audit.predicted_by_context[context],
           branch_audit.actual_by_context[context], branch_audit.exact_by_context[context],
           branch_audit.false_positive_by_context[context], branch_audit.false_negative_by_context[context],
@@ -1466,12 +1421,12 @@ void star_tlb::prefetcher_final_stats()
         average(value.vpn_correct[ROLE_A], value.resolved), average(value.vpn_correct[ROLE_B], value.resolved),
         average(value.vpn_correct[ROLE_C], value.resolved), average(value.triplet_byte_correct, value.resolved),
         average(value.triplet_vpn_correct, value.resolved), average(value.descriptor_exact, value.resolved));
-    for (uint8_t context = 1; context < CONTEXT_COUNT; ++context) {
+    for (uint8_t context = 1; context < gemm_runtime_loop_context::state.next_context; ++context) {
       const auto& by_context = accuracy.by_actual_context[context];
       fmt::print(
-          "star_tlb_v2 accuracy_context context:{} predictions:{} resolved:{} context_correct:{} A_vpn_correct:{} "
+          "star_tlb_v2 accuracy_context context_id:{} predictions:{} resolved:{} context_correct:{} A_vpn_correct:{} "
           "B_vpn_correct:{} C_vpn_correct:{} triplet_vpn_correct:{} triplet_byte_correct:{} descriptor_exact:{}\n",
-          context_name(context), by_context.predictions, by_context.resolved, by_context.context_correct,
+          static_cast<unsigned>(context), by_context.predictions, by_context.resolved, by_context.context_correct,
           by_context.vpn_correct[ROLE_A], by_context.vpn_correct[ROLE_B], by_context.vpn_correct[ROLE_C],
           by_context.triplet_vpn_correct, by_context.triplet_byte_correct, by_context.descriptor_exact);
     }

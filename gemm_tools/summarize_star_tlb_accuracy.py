@@ -65,6 +65,19 @@ def main() -> int:
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     eligible = max(0, int(manifest["input_pim_records"]) - 1)
+    offline = manifest.get("offline_ground_truth", {})
+    identity_by_pc = {
+        int(row["branch_pc"], 0): row
+        for row in offline.get("loop_identities", [])
+    }
+    phase_by_level = {
+        "K": "K_PROGRESS",
+        "IR": "K_TO_IR",
+        "JR": "IR_TO_JR",
+        "IC": "JR_TO_IC",
+        "PC": "IC_TO_PC",
+        "JC": "PC_TO_JC",
+    }
     events = read_rows(args.accuracy_log)
     primary_events = [row for row in events if row["primary"] == "1" and row["outcome"] != "out_of_range"]
     primary = [row for row in primary_events if row["actual_context"] != "NONE"]
@@ -82,6 +95,9 @@ def main() -> int:
 
     lines = [
         "STAR-TLB side-effect-free RPRG Acc@1 report",
+        "runtime contexts: opaque IDs learned from (ASID, branch PC, backward target)",
+        f"control-flow source: {manifest.get('control_flow', {}).get('source', 'unknown')}",
+        f"paper-valid control flow: {manifest.get('control_flow', {}).get('paper_valid', 'unknown')}",
         f"trace granularity: {manifest.get('translation_granularity', 'unknown')}",
         f"PIM descriptors: {manifest['input_pim_records']}",
         f"eligible one-step transitions: {eligible}",
@@ -113,14 +129,30 @@ def main() -> int:
     ]
 
     context_rows: list[dict[str, object]] = []
-    for context in CONTEXTS:
+    contexts = sorted({row["actual_context"] for row in primary}, key=int)
+    for context in contexts:
         rows = [row for row in primary if row["actual_context"] == context]
         triplet = sum(correct(row, "triplet_vpn_correct") and correct(row, "context_correct") for row in rows)
         low, high = wilson(triplet, len(rows))
+        loop_pc_values = [
+            int(row["actual_loop_pc"])
+            for row in rows
+            if int(row["actual_loop_pc"]) != 0
+        ]
+        loop_pc = Counter(loop_pc_values).most_common(1)[0][0] if loop_pc_values else 0
+        identity = identity_by_pc.get(loop_pc, {})
+        loop_level = identity.get("loop_level", "")
+        ground_truth_phase = phase_by_level.get(loop_level, "")
+        denominator = int(
+            offline.get("phase_counts", {}).get(ground_truth_phase, 0)
+        )
         entry: dict[str, object] = {
-            "context": context,
+            "context_id": int(context),
+            "loop_branch_pc": loop_pc,
+            "offline_loop_level": loop_level,
+            "offline_ground_truth_phase": ground_truth_phase,
             "predictions": len(rows),
-            "coverage_denominator": int(manifest.get("phase_counts", {}).get(context, 0)),
+            "coverage_denominator": denominator,
             "context_accuracy": ratio(sum(correct(row, "context_correct") for row in rows), len(rows)),
             "triplet_byte_accuracy": ratio(sum(correct(row, "triplet_byte_correct") and correct(row, "context_correct") for row in rows), len(rows)),
             "triplet_vpn_accuracy": ratio(triplet, len(rows)),
@@ -169,7 +201,8 @@ def main() -> int:
     summary = "\n".join(lines) + "\n"
     print(summary, end="")
     (args.output_dir / "rprg-accuracy-summary.txt").write_text(summary, encoding="utf-8")
-    write_csv(args.output_dir / "rprg-accuracy-by-context.csv", list(context_rows[0]), context_rows)
+    if context_rows:
+        write_csv(args.output_dir / "rprg-accuracy-by-context.csv", list(context_rows[0]), context_rows)
     if confidence_rows:
         write_csv(args.output_dir / "rprg-accuracy-by-confidence.csv", list(confidence_rows[0]), confidence_rows)
     if convergence_rows:
